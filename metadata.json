@@ -1,5 +1,5 @@
 {
-  "name": "AI Core Nexus",
-  "description": "A sophisticated GUI for interacting with a local AI core, featuring a terminal, file processing, system monitoring, and more.",
+  "name": "AI Unified Tool v2.0.0 — Neon GUI",
+  "description": "A neon-themed, single-file SPA that provides a GUI for a rebased Bash tool, with Ollama integration and fallbacks.",
   "requestFramePermissions": []
 }
