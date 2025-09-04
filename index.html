@@ -102,18 +102,22 @@
             </div>
             <div id="panel-file" class="content-panel">
                 <h2><i class="fa-solid fa-file-lines"></i>File Processor</h2>
-                <p>Process a single file from the Virtual File System (VFS).</p>
+                <p>Process a single file from the Virtual File System (VFS) using AI.</p>
                 <div class="input-group mb-3">
-                    <input type="text" id="file-input" class="form-control" placeholder="/vfs/documents/report.txt">
-                    <button class="btn btn-primary execute-btn" type="button" data-action="file"><i class="fa-solid fa-cogs me-2"></i>Process</button>
+                    <input type="text" id="file-input" class="form-control" placeholder="/vfs/documents/readme.txt">
+                    <button class="btn btn-primary" type="button" data-action="file"><i class="fa-solid fa-cogs me-2"></i>Process</button>
+                </div>
+                 <div class="mt-3">
+                    <label class="form-label">AI Analysis</label>
+                    <pre id="file-output"></pre>
                 </div>
             </div>
             <div id="panel-batch" class="content-panel">
                 <h2><i class="fa-solid fa-folder-open"></i>Batch Processor</h2>
-                <p>Process multiple files from the VFS matching a glob pattern.</p>
+                <p>Process multiple files from the VFS matching a glob pattern and generate an AI summary report.</p>
                 <div class="input-group mb-3">
                     <input type="text" id="batch-input" class="form-control" placeholder="/vfs/logs/*.log">
-                    <button class="btn btn-primary execute-btn" type="button" data-action="batch"><i class="fa-solid fa-cogs me-2"></i>Process Batch</button>
+                    <button class="btn btn-primary" type="button" data-action="batch"><i class="fa-solid fa-cogs me-2"></i>Process Batch</button>
                 </div>
             </div>
             <div id="panel-status" class="content-panel">
@@ -132,50 +136,48 @@
             </div>
             <div id="panel-agi" class="content-panel">
                 <h2><i class="fa-solid fa-eye"></i>AGI Watcher</h2>
-                <p>An autonomous agent watching a VFS directory for new files to process.</p>
+                <p>An autonomous agent watching a VFS directory for new files to process with AI.</p>
                 <div class="input-group mb-3">
                     <input type="text" id="agi-folder" class="form-control" value="/vfs/incoming">
                     <button class="btn btn-primary" id="agi-watcher-btn" type="button"><i class="fa-solid fa-binoculars me-2"></i>Start Watching</button>
                 </div>
+                <div id="agi-status" class="log-output mt-3" style="max-height: 300px; overflow-y: auto;"></div>
             </div>
-            <div id="panel-visualizer" class="content-panel">
+            <div id="panel-visualizer" class="content-panel d-flex flex-column">
                 <h2><i class="fa-solid fa-chart-wave"></i>Audio Visualizer</h2>
-                <p>Engages the system's microphone to create a real-time 3D visualization of ambient audio input.
-                    Please allow microphone access.</p>
-                <div id="visualizer-container"></div>
+                <p>Engages the system's microphone to create a real-time 3D visualization of ambient audio input. Please allow microphone access.</p>
+                <div id="visualizer-ui-container" class="flex-grow-1 d-flex">
+                     <button id="start-visualizer-btn" class="btn btn-primary m-auto"><i class="fa-solid fa-microphone me-2"></i>Start Visualizer</button>
+                    <div id="visualizer-container" class="w-100 h-100" style="display: none;"></div>
+                </div>
             </div>
-            <div id="panel-ghosting" class="content-panel">
+            <div id="panel-ghosting" class="content-panel d-flex flex-column">
                 <h2><i class="fa-solid fa-ghost"></i>Ghosting Protocol</h2>
-                <p>Capture a transient "echo" of the system's state using various simulated and live device sensors.</p>
-                <div id="ghosting-container">
-                    <div id="ghosting-controls">
+                <p>Capture a transient "echo" of the system's state using various simulated and live device sensors for AI analysis.</p>
+                <div id="ghosting-container" class="d-flex flex-column flex-grow-1">
+                    <div id="ghosting-controls" class="mb-3">
                         <button id="capture-echo-btn" class="btn btn-primary"><i class="fa-solid fa-satellite-dish me-2"></i>Capture Last Echo</button>
-                        <div class="form-group my-2">
-                            <label for="hold-duration-slider" class="form-label">Echo Hold Duration: <span id="hold-duration-value">2s</span></label>
-                            <input type="range" class="form-range" min="1" max="5" step=".5" value="2" id="hold-duration-slider">
-                        </div>
-                        <div class="form-check form-switch">
+                        <div class="form-check form-switch my-2">
                             <input class="form-check-input" type="checkbox" role="switch" id="use-live-sensors-toggle">
-                            <label class="form-check-label" for="use-live-sensors-toggle">Use Live Sensors</label>
-                        </div>
-                        <div id="echo-analysis-area" class="response-area">
-                            <h3>Echo Analysis</h3>
-                            <pre id="echo-analysis-output"></pre>
+                            <label class="form-check-label" for="use-live-sensors-toggle">Use Live Sensors (requires device motion)</label>
                         </div>
                     </div>
-                    <div id="ghosting-canvas-container"></div>
+                    <div id="ghosting-canvas-container" class="flex-grow-1 position-relative" style="min-height: 200px;"></div>
+                    <div id="echo-analysis-area" class="mt-3">
+                        <label class="form-label">AI Echo Analysis</label>
+                        <pre id="echo-analysis-output"></pre>
+                    </div>
                 </div>
             </div>
             <div id="panel-synthesis" class="content-panel">
                 <h2><i class="fa-solid fa-dna"></i>Bio-Genetic Synthesis</h2>
                 <p>Use AI models to generate messenger RNA (mRNA) sequences from protein sequences or generate untranslated regions (UTRs).</p>
-                
                 <div class="row">
                     <!-- CDS Generation -->
                     <div class="col-md-6 mb-4">
                         <div class="synthesis-card">
                             <h3>CDS Generation</h3>
-                            <p class="text-secondary small">Translate a protein sequence (e.g., IDQVPS) into a corresponding mRNA coding sequence (CDS).</p>
+                            <p class="text-secondary small">Translate a protein sequence (e.g., IDQVPS) into a corresponding mRNA coding sequence (CDS) using an AI model for codon optimization.</p>
                             <div class="mb-3">
                                 <label for="protein-input" class="form-label">Protein Sequence</label>
                                 <input type="text" id="protein-input" class="form-control" placeholder="Enter protein sequence...">
@@ -192,7 +194,7 @@
                     <div class="col-md-6 mb-4">
                         <div class="synthesis-card">
                             <h3>UTR Generation</h3>
-                            <p class="text-secondary small">Generate a random 5' Untranslated Region (UTR) sequence, critical for translation initiation.</p>
+                            <p class="text-secondary small">Generate a plausible 5' Untranslated Region (UTR) sequence, critical for translation initiation, using an AI model.</p>
                             <button id="generate-utr-btn" class="btn btn-primary mb-3"><i class="fa-solid fa-dice me-2"></i>Generate 5' UTR</button>
                              <div class="mt-3">
                                 <label class="form-label">Generated 5' UTR</label>
