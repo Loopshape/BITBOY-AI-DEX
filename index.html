@@ -83,6 +83,7 @@ a { color: var(--color-neon-blue); text-shadow:0 0 6px #00ccff; }
 /* Buttons */
 button { cursor:pointer; border-radius:6px; background: rgba(0,255,204,0.1); padding:8px 12px; color:#00ffcc; box-shadow:0 0 6px #00ffcc; transition: all 0.2s ease; }
 button:hover { background: rgba(0,255,204,0.3); box-shadow:0 0 12px #00ffcc; }
+button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 /* Forms */
 input, textarea, select { background: rgba(0,0,0,0.3); border:1px solid #00ffcc; padding:6px 10px; color:#00ffcc; border-radius:4px; outline:none; transition:0.2s; }
@@ -116,7 +117,7 @@ canvas.fullscreen-adapter {
 * { scroll-behavior: smooth; transition: all 0.2s ease-in-out; }
 
 /* ================== LAYOUT ================== */
-.wrapper { position:relative; width:100%; height:100vh; overflow:hidden; }
+.wrapper { position:relative; width:100%; min-height:100vh; overflow:hidden; }
 .content { position:relative; z-index:2; padding:24px; }
 .grid { display:grid; grid-template-columns: 1.4fr .6fr; gap:16px; }
 @media (max-width: 1100px){ .grid { grid-template-columns:1fr; } }
@@ -155,7 +156,7 @@ hr.sep { border:0; border-top:1px dashed #00ffcc55; margin:10px 0; }
 .tab-panel.active { display:block; }
 
 /* Header */
-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; }
 .brand { display:flex; align-items:center; gap:10px; }
 .logo { width:34px; height:34px; border-radius:10px; background: radial-gradient(circle at 30% 30%, #00ffcc, #001111 60%); box-shadow:0 0 20px #00ffcc; }
 h1.title { letter-spacing:.5px; }
@@ -168,6 +169,7 @@ h1.title { letter-spacing:.5px; }
 input[type="number"]{ width:90px; }
 input[type="text"]{ min-width:240px; }
 textarea{ min-height:100px; }
+.swap-interface select { flex-grow: 1; }
 </style>
 </head>
 <body>
@@ -236,6 +238,53 @@ textarea{ min-height:100px; }
 
     <!-- RIGHT: Modules -->
     <div class="stack">
+      <div class="card panel">
+        <h3>BITBOY AI-DEX</h3>
+        <div class="tabs" id="dexTabs">
+          <button class="tab-btn active" data-tab="dexWalletTab">Wallet</button>
+          <button class="tab-btn" data-tab="dexSwapTab">Swap</button>
+          <button class="tab-btn" data-tab="dexAiTab">AI Analyst</button>
+        </div>
+        <div id="dexWalletTab" class="tab-panel active">
+          <div class="stack">
+            <button id="connectWalletBtn">Connect Wallet</button>
+            <div id="walletInfo" style="display:none; margin-top:8px;">
+              <p class="small mono">Address: <span id="walletAddress"></span></p>
+              <p class="small mono">Balance: <span id="walletBalance"></span></p>
+            </div>
+          </div>
+        </div>
+        <div id="dexSwapTab" class="tab-panel">
+          <div class="stack swap-interface">
+              <label>From</label>
+              <div class="row">
+                  <input id="swapFromAmount" type="number" value="1">
+                  <select id="swapFromToken">
+                      <option>ETH</option>
+                      <option>BTC</option>
+                      <option>BITBOY</option>
+                  </select>
+              </div>
+              <label>To (estimated)</label>
+              <div class="row">
+                  <input id="swapToAmount" type="number" readonly>
+                  <select id="swapToToken">
+                      <option>USDT</option>
+                      <option>ETH</option>
+                  </select>
+              </div>
+              <p class="small" id="swapRate"></p>
+              <button id="swapBtn">Swap</button>
+          </div>
+        </div>
+        <div id="dexAiTab" class="tab-panel">
+          <div class="stack">
+              <button id="aiSignalBtn">Get AI Trade Signal</button>
+              <pre class="mono" id="aiSignalOutput" style="margin-top:8px; white-space:pre-wrap;"></pre>
+          </div>
+        </div>
+      </div>
+
       <div class="card panel">
         <h3>Cryptographic Operations</h3>
         <div class="tabs">
@@ -326,7 +375,7 @@ textarea{ min-height:100px; }
 function setupDOMAdapter(container){
   container.style.position = 'relative';
   container.style.width = '100%';
-  container.style.height = '100vh';
+  container.style.minHeight = '100vh';
   container.style.overflow = 'hidden';
   const layers = [];
   for(let i=0;i<20;i++){
@@ -473,6 +522,7 @@ function addChat(role, text){
 async function sendChat(msg){
   if(!msg.trim()) return;
   addChat('me', msg);
+  $('#chatInput').value = '';
   const reply = await aiProcess(msg);
   addChat('ai', reply);
 }
@@ -542,183 +592,219 @@ async function systemStatus(){
 // ================== HELP TEXTS (ported) ==================
 const HELP_GENERAL = `AI Unified Tool v2.0.0
 
-Usage: Use the GUI panels to run operations. This app mirrors the Bash tool.
+Usage: Use the GUI panels to run operations. This app mirrors the Bash tool's commands in a user-friendly interface. Configure your Ollama endpoint and model, then type prompts or use the specialized modules.
 
-CORE COMMANDS (GUI):
-  AI Processing       Run single prompts against Ollama (or fallback).
-  Chat                Interactive chat session.
-  Help                Browse help sections.
-  Crypto              Handshake + Entropy tools.
-  System              Browser/system status.
-  Model               List/switch models via Ollama (if CORS allows).
-  Tuning              Adjust temperature, max tokens, timeout.
+- Main prompt: For general text generation.
+- Chat: For conversational AI.
+- Modules: For specific tasks like crypto and system analysis.
+- Config is saved to your browser's LocalStorage.
+`;
+const HELP_CRYPTO = `Cryptographic Operations
 
-PARAMETERS:
-  temperature (0.1-2.0)    Controls response creativity
-  max_tokens (1-10000)     Maximum tokens in response
-  timeout (1-300)          Response timeout in seconds
+- Handshake: Simulates a cryptographic handshake. Provide a message and an optional ID. It generates a timestamp and a SHA-256 hash of the combined data, useful for verifying data integrity or as a simple proof-of-work.
 
-EXAMPLES:
-  Prompt: "explain quantum computing"
-  Crypto Handshake: message="secure message", id="my_handshake"
+- Entropy: Generates a cryptographically secure random hexadecimal string of a specified length (1-1024). Useful for creating keys, salts, or any data requiring high-quality randomness.
+`;
+const HELP_SYSTEM = `System & Tuning
+
+- System Status: Displays a report of your browser environment, AI configuration, and the status of the Ollama connection.
+
+- Tuning: Allows you to adjust AI model parameters like temperature (creativity), max tokens (response length), and timeout. Changes made here apply to all AI operations.
+`;
+const HELP_MODEL = `Model Management
+
+- List Models: Fetches and displays available models from your Ollama instance.
+- Switch Model: Allows you to change the active model by typing its name in the model input field.
+- The default model is 'gemma3:1b'. Ensure any model you use is available on your Ollama server.
+`;
+const HELP_TUNING = `Tuning Parameters
+
+- Temperature: Controls randomness. Lower values (e.g., 0.2) make the output more deterministic and focused. Higher values (e.g., 1.0) make it more creative and diverse.
+
+- Max Tokens: The maximum number of tokens (words/pieces of words) the model can generate in a single response.
+
+- Timeout: The maximum time in seconds to wait for a response from the Ollama server before giving up.
 `;
 
-const HELP_CRYPTO = `CRYPTOGRAPHIC OPERATIONS
+// ================== UI BINDINGS ==================
+function setupUI(){
+  loadCfgToUI();
+  loadLogs();
+  logInfo('AI Unified Tool v2.0.0 initialized.');
 
-Handshake:
-  - Provide a message and optional ID, then run.
-  - Output includes SHA256 of (message + timestamp + id).
+  // Generic tab handler
+  document.body.addEventListener('click', e => {
+    const button = e.target.closest('.tab-btn');
+    if (!button) return;
 
-Entropy:
-  - Length 1–1024 (hex). Uses WebCrypto getRandomValues().
-`;
+    const tabsContainer = button.closest('.tabs');
+    if (!tabsContainer) return;
 
-const HELP_SYSTEM = `SYSTEM MANAGEMENT
+    const parent = tabsContainer.closest('.card');
+    if (!parent) return;
 
-Status:
-  - Shows browser info, cores, online state, approx memory, and Ollama reachability.
-`;
+    const tabId = button.dataset.tab;
 
-const HELP_MODEL = `MODEL MANAGEMENT
+    tabsContainer.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    button.classList.add('active');
 
-List:
-  - Fetches models from Ollama /api/tags (CORS permitting).
-
-Switch:
-  - Sets current model in this app's configuration.
-`;
-
-const HELP_TUNING = `AI TUNING PARAMETERS
-
-Temperature (0.1–2.0): creativity
-Max Tokens (1–10000): output length cap
-Timeout (1–300): request timeout in seconds
-`;
-
-// ================== UI WIRING ==================
-function setTab(btn){
-  const tab = btn.getAttribute('data-tab');
-  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b===btn));
-  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active', p.id===tab));
-}
-
-document.querySelectorAll('.tab-btn').forEach(btn=>{
-  btn.addEventListener('click', ()=>setTab(btn));
-});
-
-function initHelp(){
-  $("#helpGeneral").textContent = HELP_GENERAL;
-  $("#helpCrypto").textContent = HELP_CRYPTO;
-  $("#helpSystem").textContent = HELP_SYSTEM;
-  $("#helpModel").textContent = HELP_MODEL;
-  $("#helpTuning").textContent = HELP_TUNING;
-}
-
-function bindActions(){
-  // Config
-  $("#saveCfgBtn").addEventListener('click', ()=>{
-    const cfg = {
-      model: $("#modelInput").value.trim() || 'gemma3:1b',
-      temperature: Number($("#tempInput").value)||0.7,
-      maxTokens: Number($("#maxTokensInput").value)||1000,
-      timeout: Number($("#timeoutInput").value)||30,
-      endpoint: $("#ollamaEndpoint").value.trim()
-    };
-    // propagate to tuning fields too
-    $("#tunTemp").value = cfg.temperature;
-    $("#tunMaxTok").value = cfg.maxTokens;
-    $("#tunTimeout").value = cfg.timeout;
-    saveCfg(cfg);
+    parent.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
+    const activePanel = parent.querySelector('#' + tabId);
+    if(activePanel) activePanel.classList.add('active');
   });
 
-  // AI run
-  $("#runBtn").addEventListener('click', async ()=>{
-    const prompt = $("#promptInput").value;
-    const out = await aiProcess(prompt);
-    logOk("AI: " + out.slice(0, 4000));
+  // Main controls
+  $('#runBtn').addEventListener('click', async ()=>{
+    const p = $('#promptInput').value;
+    if(!p) return logWarn('Prompt is empty.');
+    const res = await aiProcess(p);
+    logInfo('Response:\n' + res);
   });
-
-  // Help button scrolls to Help panel
-  $("#helpBtn").addEventListener('click', ()=>{
-    document.querySelectorAll('details').forEach(d=>d.open=false);
-    window.scrollBy({ top: window.innerHeight, behavior:'smooth' });
+  $('#helpBtn').addEventListener('click', ()=>logInfo(HELP_GENERAL));
+  $('#saveCfgBtn').addEventListener('click', ()=>{
+    saveCfg({
+      model: $("#modelInput").value,
+      temperature: Number($("#tempInput").value),
+      maxTokens: Number($("#maxTokensInput").value),
+      timeout: Number($("#timeoutInput").value),
+      endpoint: $("#ollamaEndpoint").value,
+    });
   });
-
-  // Models list
-  $("#listModelsBtn").addEventListener('click', async ()=>{
-    const res = await ollamaTags();
-    if(res.ok){
-      logOk("Models: " + (res.models.join(', ') || '(none)'));
-    }else{
-      logWarn("Unable to list models.");
-    }
+  $('#listModelsBtn').addEventListener('click', async ()=>{
+    const {ok, models} = await ollamaTags();
+    if(ok) logInfo('Available models:\n' + models.join('\n'));
+    else logErr('Could not retrieve models.');
   });
-
-  // Switch model
-  $("#switchModelBtn").addEventListener('click', ()=>{
-    const m = prompt('Enter model name to switch to:', $("#modelInput").value);
-    if(!m) return;
-    const cfg = getCfg(); cfg.model = m; saveCfg(cfg); loadCfgToUI();
-    logOk("Switched model to: " + m);
-  });
-
-  // Console controls
-  $("#clearConsoleBtn").addEventListener('click', ()=>{ consoleEl.innerHTML=''; logInfo('Console cleared.'); });
-  $("#exportLogsBtn").addEventListener('click', ()=>{
-    const data = localStorage.getItem(LOG_KEY) || '[]';
-    const blob = new Blob([data], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'ai_logs.json'; a.click();
-  });
-  $("#purgeLogsBtn").addEventListener('click', ()=>{ localStorage.removeItem(LOG_KEY); logWarn('Logs purged.'); });
+  $('#switchModelBtn').addEventListener('click', ()=>logInfo(`Model set to: ${$('#modelInput').value}. Save config to persist.`));
+  $('#clearConsoleBtn').addEventListener('click', ()=>{ consoleEl.innerHTML = ''; });
 
   // Chat
-  $("#sendChatBtn").addEventListener('click', async ()=>{
-    const msg = $("#chatInput").value; $("#chatInput").value='';
-    await sendChat(msg);
+  $('#sendChatBtn').addEventListener('click', ()=>sendChat($('#chatInput').value));
+  $('#chatInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendChat($('#chatInput').value); });
+  $('#resetChatBtn').addEventListener('click', ()=>{ chatLog.innerHTML=''; logInfo('Chat history cleared.'); });
+  
+  // Console
+  $('#exportLogsBtn').addEventListener('click', ()=>{
+      const logs = JSON.parse(localStorage.getItem(LOG_KEY) || '[]').join('\n');
+      const blob = new Blob([logs], {type:'text/plain'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `ai-tool-logs-${Date.now()}.txt`;
+      a.click();
+      logOk('Logs exported.');
   });
-  $("#resetChatBtn").addEventListener('click', ()=>{ chatLog.innerHTML=''; logInfo('Conversation reset.'); });
-  $("#chatInput").addEventListener('keydown', async (e)=>{
-    if(e.key==='Enter'){ e.preventDefault(); $("#sendChatBtn").click(); }
+  $('#purgeLogsBtn').addEventListener('click', ()=>{
+      localStorage.removeItem(LOG_KEY);
+      consoleEl.innerHTML = '';
+      logWarn('All logs purged.');
   });
 
   // Crypto
-  $("#hsRunBtn").addEventListener('click', async ()=>{
-    const out = await cryptoHandshake($("#hsMessage").value, $("#hsId").value);
-    alert(out);
+  $('#hsRunBtn').addEventListener('click', async ()=>{
+      const res = await cryptoHandshake($('#hsMessage').value, $('#hsId').value);
+      logInfo('Handshake Result:\n' + res);
   });
-  $("#entropyBtn").addEventListener('click', ()=>{
-    const hex = cryptoEntropy($("#entropyLen").value);
-    $("#entropyOut").value = hex;
+  $('#entropyBtn').addEventListener('click', ()=>{
+      $('#entropyOut').value = cryptoEntropy($('#entropyLen').value);
   });
 
   // System
-  $("#sysStatusBtn").addEventListener('click', async ()=>{
-    $("#sysReport").textContent = await systemStatus();
+  $('#sysStatusBtn').addEventListener('click', async ()=>{
+      $('#sysReport').textContent = await systemStatus();
+  });
+  $('#tunApplyBtn').addEventListener('click', ()=>{
+      $("#tempInput").value = $("#tunTemp").value;
+      $("#maxTokensInput").value = $("#tunMaxTok").value;
+      $("#timeoutInput").value = $("#tunTimeout").value;
+      logOk('Tuning parameters applied. Save config to persist.');
   });
 
-  // Tuning
-  $("#tunApplyBtn").addEventListener('click', ()=>{
-    const cfg = getCfg();
-    const t = Number($("#tunTemp").value)||0.7;
-    const mt = Number($("#tunMaxTok").value)||1000;
-    const to = Number($("#tunTimeout").value)||30;
-    if(t<0.1 || t>2.0){ logErr('Temperature must be 0.1–2.0'); return; }
-    if(mt<1 || mt>10000){ logErr('Max tokens must be 1–10000'); return; }
-    if(to<1 || to>300){ logErr('Timeout must be 1–300'); return; }
-    cfg.temperature = t; cfg.maxTokens = mt; cfg.timeout = to;
-    saveCfg(cfg); loadCfgToUI();
-    logOk('Tuning parameters updated.');
+  // Help details
+  $('#helpGeneral').textContent = HELP_GENERAL;
+  $('#helpCrypto').textContent = HELP_CRYPTO;
+  $('#helpSystem').textContent = HELP_SYSTEM;
+  $('#helpModel').textContent = HELP_MODEL;
+  $('#helpTuning').textContent = HELP_TUNING;
+
+  // BITBOY AI-DEX Module
+  $('#connectWalletBtn').addEventListener('click', () => {
+    logInfo('Simulating wallet connection...');
+    const walletAddress = '0x' + [...crypto.getRandomValues(new Uint8Array(20))].map(b => b.toString(16).padStart(2, '0')).join('');
+    const walletBalance = (Math.random() * 5 + 0.1).toFixed(4) + ' ETH';
+    $('#walletAddress').textContent = walletAddress;
+    $('#walletBalance').textContent = walletBalance;
+    $('#walletInfo').style.display = 'block';
+    $('#connectWalletBtn').textContent = 'Wallet Connected';
+    $('#connectWalletBtn').disabled = true;
+    logOk('Wallet connected (simulated).');
   });
+  
+  const exchangeRates = {
+    'ETH': { 'USDT': 3000.52, 'ETH': 1 },
+    'BTC': { 'USDT': 60123.45, 'ETH': 20.04 },
+    'BITBOY': { 'USDT': 0.11, 'ETH': 0.000033 },
+    'USDT': { 'ETH': 1/3000.52, 'USDT': 1 }
+  };
+
+  function updateSwap() {
+    const fromToken = $('#swapFromToken').value;
+    const toToken = $('#swapToToken').value;
+    const fromAmount = parseFloat($('#swapFromAmount').value) || 0;
+    
+    if (fromToken === toToken) {
+      $('#swapToAmount').value = fromAmount.toFixed(6);
+      $('#swapRate').textContent = '1:1 Ratio';
+      return;
+    }
+    const rate = exchangeRates[fromToken]?.[toToken];
+    if (!rate) {
+      $('#swapToAmount').value = 'N/A';
+      $('#swapRate').textContent = 'Rate not available';
+      return;
+    }
+    const toAmount = fromAmount * rate;
+    $('#swapToAmount').value = toAmount.toFixed(6);
+    $('#swapRate').textContent = `1 ${fromToken} ≈ ${rate.toFixed(4)} ${toToken}`;
+  }
+
+  ['swapFromAmount', 'swapFromToken', 'swapToToken'].forEach(id => {
+    const el = $('#' + id);
+    if(el) {
+      el.addEventListener('input', updateSwap);
+      el.addEventListener('change', updateSwap);
+    }
+  });
+  
+  $('#swapBtn').addEventListener('click', () => {
+    const fromToken = $('#swapFromToken').value;
+    const toToken = $('#swapToToken').value;
+    const fromAmount = $('#swapFromAmount').value;
+    const toAmount = $('#swapToAmount').value;
+    if (parseFloat(fromAmount) > 0 && toAmount !== 'N/A') {
+      logOk(`Swap simulated: ${fromAmount} ${fromToken} -> ${toAmount} ${toToken}`);
+    } else {
+      logWarn('Invalid swap parameters.');
+    }
+  });
+  
+  $('#aiSignalBtn').addEventListener('click', async () => {
+    logInfo('Requesting AI trade signal...');
+    $('#aiSignalOutput').textContent = 'Analyzing...';
+    const tokenMap = {'ETH': 'Ethereum', 'BTC': 'Bitcoin', 'BITBOY': 'BITBOY Token'};
+    const selectedToken = $('#swapFromToken').value;
+    const tokenFullName = tokenMap[selectedToken] || selectedToken;
+    
+    const prompt = `Act as a crypto trade analyst. Provide a short, 2-3 sentence market analysis for ${tokenFullName} (${selectedToken}) and then on a new line, give a clear trade signal: BUY, SELL, or HOLD.`;
+    const result = await aiProcess(prompt);
+    $('#aiSignalOutput').textContent = result;
+    logOk('AI trade signal received.');
+  });
+  
+  // Initial call to set swap values
+  updateSwap();
 }
 
-// Init
-loadLogs();
-loadCfgToUI();
-initHelp();
-bindActions();
-logInfo('GUI ready.');
+setupUI();
 </script>
 </body>
 </html>
