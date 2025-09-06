@@ -1,1053 +1,561 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI Unified Tool v2.0.0 — Neon GUI (Single File)</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-BITBOY-DEX :: STRATEGIC SYNTHESIS CORE</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-dark: #0a0e17;
+            --surface-dark: #131a2d;
+            --border-glow: #00ffff44;
+            --glow-cyan: #00ffff;
+            --glow-magenta: #ff00ff;
+            --text-primary: #e0e0e0;
+            --text-secondary: #a0aec0;
+            --text-green: #00ff9d;
+            --text-red: #ff4d6d;
+            --font-mono: 'Roboto Mono', monospace;
+        }
 
-<style>
-/* ================== FULL CSS RESET + ADAPTER ================== */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
-/* Reset default browser styles */
-html, body, div, span, applet, object, iframe,
-h1,h2,h3,h4,h5,h6, p, blockquote, pre,
-a, abbr, acronym, address, big, cite, code,
-del, dfn, em, img, ins, kbd, q, s, samp,
-small, strike, strong, sub, sup, tt, var,
-b, u, i, center,
-dl, dt, dd, ol, ul, li,
-fieldset, form, label, legend,
-table, caption, tbody, tfoot, thead, tr, th, td,
-article, aside, canvas, details, embed,
-figure, figcaption, footer, header, hgroup,
-menu, nav, output, ruby, section, summary,
-time, mark, audio, video {
-  margin: 0; padding: 0; border: 0; font: inherit; vertical-align: baseline;
-}
+        body {
+            font-family: var(--font-mono);
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            height: 100vh;
+            padding: 2rem;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            position: relative;
+        }
 
-/* HTML5 display fixes */
-article, aside, details, figcaption, figure,
-footer, header, hgroup, menu, nav, section { display: block; }
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.03) 1px, transparent 1px, transparent 4px);
+            animation: scanline 10s linear infinite;
+            pointer-events: none;
+            z-index: -1;
+        }
 
-body {
-  line-height: 1; min-height:100vh; overflow-x:hidden;
-  background: #1a0a0f; /* fallback for gradient */
-  font-family: 'SF Mono','Monaco','Inconsolata','Roboto Mono', monospace;
-}
+        .container {
+            width: 100%;
+            max-width: 1400px;
+            height: calc(100vh - 4rem);
+            max-height: 1000px;
+            background: rgba(19, 26, 45, 0.85);
+            border: 1px solid var(--border-glow);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 30px var(--border-glow);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            animation: fadeIn 1s ease-out;
+        }
 
-ol, ul { list-style: none; }
+        .header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-glow);
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--glow-cyan);
+            text-shadow: 0 0 5px var(--glow-cyan);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
 
-a { text-decoration: none; color: inherit; }
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+        }
 
-table { border-collapse: collapse; border-spacing: 0; }
+        .status-light {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: var(--text-green);
+            box-shadow: 0 0 10px var(--text-green);
+            animation: pulse-green 1.5s infinite;
+        }
+        
+        .status-light.error {
+            background-color: var(--text-red);
+            box-shadow: 0 0 10px var(--text-red);
+            animation: pulse-red 1.5s infinite;
+        }
 
-button, input, select, textarea {
-  font-family: inherit; font-size: inherit;
-  background: none; border: none; outline: none; color: inherit;
-  -webkit-tap-highlight-color: transparent;
-}
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            background-color: var(--border-glow);
+            flex-grow: 1;
+            overflow-y: auto;
+        }
 
-img, video, canvas { display: block; max-width:100%; height:auto; }
+        .panel {
+            background-color: var(--surface-dark);
+            padding: 1.5rem;
+            flex-shrink: 0;
+        }
+        
+        #market-chart-panel {
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+        }
 
-* { box-sizing: border-box; }
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
 
-/* ================== GLOBAL THEME OVERRIDES ================== */
-:root {
-  --color-neon-yellow: #ffff33;
-  --color-neon-green: #00ff00;
-  --color-neon-blue: #00ccff;
-  --color-neon-red: #ff3300;
-  --color-paragraph: #ffffff;
-  --color-background-gradient: linear-gradient(135deg, #1a0a0f, #0a1a2f, #2f0a1a);
-  --font-glow: 0 0 6px var(--color-neon-yellow), 0 0 10px var(--color-neon-yellow);
-}
+        .panel-title {
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 0.9rem;
+            border-bottom: 1px solid var(--border-glow);
+            padding-bottom: 0.5rem;
+            width: 100%;
+        }
 
-/* Body background & default */
-body {
-  background: var(--color-background-gradient);
-  color: var(--color-paragraph);
-}
+        .panel-header .panel-title {
+            border-bottom: none;
+            padding-bottom: 0;
+            width: auto;
+        }
 
-/* Headings glow */
-h1,h2,h3,h4,h5,h6 { color: var(--color-neon-yellow); text-shadow: var(--font-glow); }
+        .timeframe-selector {
+            display: flex;
+            gap: 0.5rem;
+        }
 
-/* Paragraphs */
-p { color: var(--color-paragraph); line-height:1.5; text-shadow:0 0 3px #ffffff33; }
+        .timeframe-btn {
+            background-color: transparent;
+            border: 1px solid var(--text-secondary);
+            color: var(--text-secondary);
+            padding: 0.25rem 0.75rem;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .timeframe-btn.active, .timeframe-btn:hover {
+            background-color: var(--glow-cyan);
+            color: var(--bg-dark);
+            border-color: var(--glow-cyan);
+            box-shadow: 0 0 10px var(--glow-cyan);
+        }
 
-/* Lists */
-ul li, ol li { color: var(--color-neon-yellow); text-shadow:0 0 4px #ffff33; }
+        #chart-container {
+            position: relative;
+            flex-grow: 1;
+        }
 
-/* Links */
-a { color: var(--color-neon-blue); text-shadow:0 0 6px #00ccff; }
+        .intel-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .data-point h3 { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem; }
+        .data-point p { font-size: 1.5rem; font-weight: 700; }
+        .positive { color: var(--text-green); }
+        .negative { color: var(--text-red); }
 
-/* Buttons */
-button { cursor:pointer; border-radius:6px; background: rgba(0,255,204,0.1); padding:8px 12px; color:#00ffcc; box-shadow:0 0 6px #00ffcc; transition: all 0.2s ease; }
-button:hover { background: rgba(0,255,204,0.3); box-shadow:0 0 12px #00ffcc; }
-button:disabled { cursor: not-allowed; opacity: 0.5; }
+        .news-feed h3 { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem; }
+        .news-item { font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-primary); }
+        
+        #ai-synthesis-panel {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #directive-output {
+            flex-grow: 1;
+            font-size: 1rem;
+            line-height: 2;
+            white-space: pre-wrap;
+            min-height: 200px;
+        }
+        
+        #directive-output .error-message {
+            color: var(--text-red);
+        }
 
-/* Forms */
-input, textarea, select { background: rgba(0,0,0,0.3); border:1px solid #00ffcc; padding:6px 10px; color:#00ffcc; border-radius:4px; outline:none; transition:0.2s; }
-input:focus, textarea:focus, select:focus { border-color:#ffff33; box-shadow:0 0 8px #ffff33; }
+        .cursor { display: inline-block; width: 10px; height: 1em; background-color: var(--glow-magenta); animation: blink 1s infinite; vertical-align: middle; }
+        .placeholder { color: var(--text-secondary); opacity: 0.6; }
 
-/* Canvas full viewport adapter */
-canvas.fullscreen-adapter {
-  position: absolute;
-  top:0; left:0;
-  width:100%; height:100%;
-  pointer-events:none;
-  z-index:0;
-}
+        .footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--border-glow);
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            flex-shrink: 0;
+        }
 
-/* Overlay / panels */
-.panel, .alert-panel {
-  position:relative; border-radius:12px; padding:12px; background:rgba(0,0,0,0.7);
-  border:2px solid #00ffcc; color:#00ffcc; text-shadow:0 0 5px #00ffcc;
-  pointer-events:auto; z-index:2;
-}
+        #synthesize-btn {
+            background-color: transparent;
+            border: 1px solid var(--glow-magenta);
+            color: var(--glow-magenta);
+            padding: 0.75rem 1.5rem;
+            font-family: var(--font-mono);
+            font-size: 1rem;
+            font-weight: 700;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 10px var(--glow-magenta) inset;
+        }
 
-/* Parallax layers adapter */
-.parallax-layer {
-  position:absolute; top:0; left:0;
-  width:100%; height:100%;
-  pointer-events:none;
-  transform-style: preserve-3d;
-}
-
-/* Smooth scrolling and transitions */
-* { scroll-behavior: smooth; transition: all 0.2s ease-in-out; }
-
-/* ================== LAYOUT ================== */
-.wrapper { position:relative; width:100%; min-height:100vh; overflow:hidden; }
-.content { position:relative; z-index:2; padding:24px; }
-.grid { display:grid; grid-template-columns: 1.4fr .6fr; gap:16px; }
-@media (max-width: 1100px){
-  .grid { grid-template-columns:1fr; }
-  header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-  .search-bar {
-    width: 100%;
-    order: 2;
-  }
-  .search-bar input {
-    max-width: none;
-    margin: 0;
-  }
-  .brand { order: 1; }
-  .badges { order: 3; }
-}
-.row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-.stack { display:flex; flex-direction:column; gap:10px; }
-.card { padding:14px; border-radius:14px; border:2px solid #00ffcc55; background:rgba(10,20,20,0.35); box-shadow:0 0 24px rgba(0,255,204,.15) inset; }
-.card h3 { margin-bottom:8px; }
-.small { font-size:12px; opacity:.85; }
-.mono { font-family: 'SF Mono','Monaco','Inconsolata','Roboto Mono', monospace; }
-.tag { border:1px solid #00ccff; padding:2px 8px; border-radius:999px; font-size:12px; color:#00ccff; }
-hr.sep { border:0; border-top:1px dashed #00ffcc55; margin:10px 0; }
-.footer-note { font-size:12px; opacity:.7; }
-
-/* Console */
-.console { background:rgba(0,0,0,0.6); border:2px solid #00ffcc; border-radius:12px; padding:10px; height:320px; overflow:auto; }
-.console .line { white-space:pre-wrap; }
-.console .muted { color:#9ae6ffcc; }
-.console .ok { color:#66ff99; text-shadow:0 0 6px #66ff99; }
-.console .warn { color:#ffd166; text-shadow:0 0 6px #ffd166; }
-.console .err { color:#ff6b6b; text-shadow:0 0 6px #ff6b6b; }
-
-/* Buttons row */
-.actions button { min-width:120px; }
-
-/* Chat pane */
-.chat-log { height:220px; overflow:auto; background:rgba(0,0,0,.5); border:1px solid #00ffcc55; border-radius:8px; padding:10px; }
-.chat-msg { margin-bottom:6px; }
-.chat-msg.me { color:#00ccff; }
-.chat-msg.ai { color:#66ff99; }
-
-/* Tabs */
-.tabs { display:flex; gap:8px; margin:8px 0; }
-.tab-btn { padding:6px 10px; border:1px solid #00ffcc55; border-radius:8px; }
-.tab-btn.active {
-  border-color:#ffff33;
-  color:#ffff33;
-  box-shadow:0 0 12px #ffff33;
-  transform: translateY(-2px);
-}
-.tab-panel {
-  max-height: 0;
-  opacity: 0;
-  overflow: hidden;
-  transition: all 0.3s ease-out;
-  visibility: hidden;
-}
-.tab-panel.active {
-  max-height: 1000px; /* Generous height for content */
-  opacity: 1;
-  visibility: visible;
-}
-
-/* Header */
-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap: 16px; }
-.brand { display:flex; align-items:center; gap:10px; }
-.logo { width:34px; height:34px; border-radius:10px; background: radial-gradient(circle at 30% 30%, #00ffcc, #001111 60%); box-shadow:0 0 20px #00ffcc; }
-h1.title { letter-spacing:.5px; }
-
-/* Search Bar */
-.search-bar {
-  flex-grow: 1;
-  min-width: 200px;
-}
-.search-bar input {
-  width: 100%;
-  max-width: 450px;
-  display: block;
-  margin: 0 auto;
-}
-
-/* Badges */
-.badges { display:flex; gap:8px; flex-wrap:wrap; }
-.badges .tag { background:rgba(0,0,0,.35); }
-
-/* Inputs sizing */
-input[type="number"]{ width:90px; }
-input[type="text"]{ min-width:240px; }
-textarea{ min-height:100px; }
-.swap-interface select { flex-grow: 1; }
-
-/* Chart styles */
-.chart-container {
-  height: 150px;
-  background: rgba(0,0,0,0.4);
-  border: 1px solid #00ffcc33;
-  border-radius: 8px;
-  margin-top: 10px;
-  position: relative;
-  overflow: hidden;
-}
-.chart-container svg {
-  width: 100%;
-  height: 100%;
-}
-.chart-container .price-line {
-  fill: none;
-  stroke: var(--color-neon-blue);
-  stroke-width: 2;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-  filter: drop-shadow(0 0 4px var(--color-neon-blue));
-}
-.chart-tooltip {
-  position: absolute;
-  background: rgba(0,20,20,0.9);
-  border: 1px solid var(--color-neon-yellow);
-  color: var(--color-neon-yellow);
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  pointer-events: none;
-  display: none;
-  z-index: 10;
-  white-space: nowrap;
-  transform: translate(-50%, -120%);
-}
-.chart-container .hover-line {
-    stroke: #ffff33aa;
-    stroke-width: 1;
-    stroke-dasharray: 3,3;
-}
-.chart-container .hover-dot {
-    fill: var(--color-neon-yellow);
-    stroke: #000;
-}
-</style>
+        #synthesize-btn:disabled { opacity: 0.4; cursor: wait; }
+        #synthesize-btn.is-synthesizing:disabled { animation: pulse-magenta 2s infinite; }
+        #synthesize-btn:not(:disabled):hover { background-color: var(--glow-magenta); color: var(--bg-dark); box-shadow: 0 0 20px var(--glow-magenta); }
+        
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--surface-dark); }
+        ::-webkit-scrollbar-thumb { background: var(--glow-magenta); border-radius: 4px; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+        @keyframes blink { 50% { opacity: 0; } }
+        @keyframes pulse-green { 0%, 100% { box-shadow: 0 0 5px var(--text-green); } 50% { box-shadow: 0 0 15px var(--text-green); } }
+        @keyframes pulse-red { 0%, 100% { box-shadow: 0 0 5px var(--text-red); } 50% { box-shadow: 0 0 15px var(--text-red); } }
+        @keyframes pulse-magenta { 0%, 100% { box-shadow: 0 0 5px var(--glow-magenta) inset; } 50% { box-shadow: 0 0 15px var(--glow-magenta) inset; } }
+        @keyframes scanline { 0% { transform: translateY(-10%); } 100% { transform: translateY(10%); } }
+        
+    </style>
 </head>
 <body>
-<div class="wrapper" id="appRoot"></div>
 
-<div class="content">
-  <header>
-    <div class="brand">
-      <div class="logo"></div>
-      <div>
-        <h1 class="title">AI Unified Tool v2.0.0 — Neon GUI</h1>
-        <div class="small">Rebased from Bash to browser — single-file, CORS-permitting Ollama integration</div>
-      </div>
-    </div>
-    <div class="search-bar">
-      <input id="filterPanelsInput" type="text" placeholder="Filter panels by keyword...">
-    </div>
-    <div class="badges">
-      <span class="tag">Single-file</span>
-      <span class="tag">No build</span>
-      <span class="tag">LocalStorage config</span>
-    </div>
-  </header>
-
-  <section class="grid">
-    <!-- LEFT: Main controls -->
-    <div class="stack">
-      <div class="card panel">
-        <h3>AI Processing</h3>
-        <div class="row">
-          <input id="promptInput" type="text" placeholder="Type a prompt…">
-          <button id="runBtn">Run</button>
-          <button id="helpBtn">Help</button>
-        </div>
-        <div class="row">
-          <input id="ollamaEndpoint" type="text" placeholder="http://localhost:11434/api/generate">
-          <input id="modelInput" type="text" placeholder="Model" value="gemma3:1b">
-          <label class="small">Temp <input id="tempInput" type="number" step="0.1" min="0.1" max="2.0" value="0.7"></label>
-          <label class="small">Max Tokens <input id="maxTokensInput" type="number" min="1" max="10000" value="1000"></label>
-          <label class="small">Timeout (s) <input id="timeoutInput" type="number" min="1" max="300" value="30"></label>
-        </div>
-        <div class="actions row">
-          <button id="saveCfgBtn">Save Config</button>
-          <button id="listModelsBtn">List Models</button>
-          <button id="switchModelBtn">Switch Model</button>
-          <button id="clearConsoleBtn">Clear Console</button>
-        </div>
-      </div>
-
-      <div class="card panel">
-        <h3>Interactive Chat</h3>
-        <div class="chat-log mono" id="chatLog" aria-live="polite"></div>
-        <div class="row" style="margin-top:8px">
-          <input id="chatInput" type="text" placeholder="You: message…">
-          <button id="sendChatBtn">Send</button>
-          <button id="resetChatBtn">Reset</button>
-        </div>
-      </div>
-
-      <div class="card panel">
-        <h3>Console & Logs</h3>
-        <div class="console mono" id="console"></div>
-        <div class="row" style="margin-top:8px">
-          <button id="exportLogsBtn">Export Logs</button>
-          <button id="purgeLogsBtn">Purge Logs</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- RIGHT: Modules -->
-    <div class="stack">
-      <div class="card panel">
-        <h3>BITBOY AI-DEX</h3>
-        <div class="tabs" id="dexTabs">
-          <button class="tab-btn active" data-tab="dexWalletTab">Wallet</button>
-          <button class="tab-btn" data-tab="dexSwapTab">Swap</button>
-          <button class="tab-btn" data-tab="dexAiTab">AI Analyst</button>
-        </div>
-        <div id="dexWalletTab" class="tab-panel active">
-          <div class="stack">
-            <button id="connectWalletBtn">Connect Wallet</button>
-            <div id="walletInfo" style="display:none; margin-top:8px;">
-              <p class="small mono">Address: <span id="walletAddress"></span></p>
-              <p class="small mono">Balance: <span id="walletBalance"></span></p>
+    <div class="container">
+        <header class="header">
+            <span>AI-BITBOY-DEX :: STRATEGIC SYNTHESIS CORE</span>
+            <div class="status-indicator">
+                <div id="status-light" class="status-light"></div>
+                <span id="status-text">DATASTREAM ACTIVE</span>
             </div>
-          </div>
-        </div>
-        <div id="dexSwapTab" class="tab-panel">
-          <div class="stack swap-interface">
-              <label>From</label>
-              <div class="row">
-                  <input id="swapFromAmount" type="number" value="1">
-                  <select id="swapFromToken">
-                      <option>ETH</option>
-                      <option>BTC</option>
-                      <option>BITBOY</option>
-                  </select>
-              </div>
-              <label>To (estimated)</label>
-              <div class="row">
-                  <input id="swapToAmount" type="number" readonly>
-                  <select id="swapToToken">
-                      <option>USDT</option>
-                      <option>ETH</option>
-                  </select>
-              </div>
-              <p class="small" id="swapRate"></p>
-              <hr class="sep">
-              <div class="chart-container" id="swapChartContainer">
-                <div class="chart-tooltip" id="swapChartTooltip"></div>
-              </div>
-              <button id="swapBtn">Swap</button>
-          </div>
-        </div>
-        <div id="dexAiTab" class="tab-panel">
-          <div class="stack">
-              <button id="aiSignalBtn">Get AI Trade Signal</button>
-              <pre class="mono" id="aiSignalOutput" style="margin-top:8px; white-space:pre-wrap;"></pre>
-          </div>
-        </div>
-      </div>
+        </header>
 
-      <div class="card panel">
-        <h3>Cryptographic Operations</h3>
-        <div class="tabs">
-          <button class="tab-btn active" data-tab="handshakeTab">Handshake</button>
-          <button class="tab-btn" data-tab="entropyTab">Entropy</button>
-        </div>
-        <div id="handshakeTab" class="tab-panel active">
-          <div class="stack">
-            <input id="hsMessage" type="text" placeholder="Handshake message">
-            <input id="hsId" type="text" placeholder="Optional handshake id">
-            <button id="hsRunBtn">Run Handshake</button>
-          </div>
-        </div>
-        <div id="entropyTab" class="tab-panel">
-          <div class="row">
-            <label class="small">Length (1-1024)</label>
-            <input id="entropyLen" type="number" min="1" max="1024" value="64">
-            <button id="entropyBtn">Generate</button>
-          </div>
-          <textarea id="entropyOut" readonly></textarea>
-        </div>
-      </div>
-
-      <div class="card panel">
-        <h3>System & Tuning</h3>
-        <div class="tabs">
-          <button class="tab-btn active" data-tab="sysTab">System</button>
-          <button class="tab-btn" data-tab="tuningTab">Tuning</button>
-        </div>
-        <div id="sysTab" class="tab-panel active">
-          <div class="stack">
-            <button id="sysStatusBtn">Show System Status</button>
-            <pre class="mono" id="sysReport"></pre>
-          </div>
-        </div>
-        <div id="tuningTab" class="tab-panel">
-          <div class="stack">
-            <div class="small">Temperature controls creativity:
-              <ul>
-                <li>0.1–0.5: More deterministic</li>
-                <li>0.5–0.8: Balanced</li>
-                <li>0.8–1.2: More creative</li>
-              </ul>
+        <main class="main-content">
+            <div id="market-intel-panel" class="panel">
+                <h2 class="panel-title">MARKET INTELLIGENCE FEED</h2>
+                <div class="intel-grid">
+                    <div class="data-point">
+                        <h3>BTC/USD PRICE</h3>
+                        <p id="btc-price">$68,521.44</p>
+                    </div>
+                    <div class="data-point">
+                        <h3>24H CHANGE</h3>
+                        <p id="btc-change" class="positive">+2.15%</p>
+                    </div>
+                    <div class="data-point">
+                        <h3>24H VOLUME</h3>
+                        <p id="btc-volume">$45.2B</p>
+                    </div>
+                    <div class="data-point">
+                        <h3>SENTIMENT INDEX</h3>
+                        <p id="sentiment" class="positive">72 (Greed)</p>
+                    </div>
+                </div>
+                <div class="news-feed">
+                    <h3>REAL-TIME HEADLINES</h3>
+                    <p id="news-item" class="news-item">FED CHAIR HINTS AT STABLE RATES, BOOSTING MARKET CONFIDENCE</p>
+                </div>
             </div>
-            <div class="row">
-              <label>Temperature</label><input id="tunTemp" type="number" step="0.1" min="0.1" max="2.0" value="0.7">
-              <label>Max Tokens</label><input id="tunMaxTok" type="number" min="1" max="10000" value="1000">
-              <label>Timeout (s)</label><input id="tunTimeout" type="number" min="1" max="300" value="30">
-              <button id="tunApplyBtn">Apply</button>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      <div class="card panel">
-        <h3>Help</h3>
-        <details>
-          <summary>General</summary>
-          <pre class="mono" id="helpGeneral"></pre>
-        </details>
-        <details>
-          <summary>Crypto</summary>
-          <pre class="mono" id="helpCrypto"></pre>
-        </details>
-        <details>
-          <summary>System</summary>
-          <pre class="mono" id="helpSystem"></pre>
-        </details>
-        <details>
-          <summary>Model</summary>
-          <pre class="mono" id="helpModel"></pre>
-        </details>
-        <details>
-          <summary>Tuning</summary>
-          <pre class="mono" id="helpTuning"></pre>
-        </details>
-      </div>
+            <div id="market-chart-panel" class="panel">
+                <div class="panel-header">
+                    <h2 class="panel-title">MARKET DATA VISUALIZATION</h2>
+                    <div class="timeframe-selector">
+                        <button class="timeframe-btn active" data-timeframe="1H">1H</button>
+                        <button class="timeframe-btn" data-timeframe="24H">24H</button>
+                        <button class="timeframe-btn" data-timeframe="7D">7D</button>
+                    </div>
+                </div>
+                <div id="chart-container">
+                    <canvas id="market-chart"></canvas>
+                </div>
+            </div>
+
+            <div id="ai-synthesis-panel" class="panel">
+                <h2 class="panel-title">AI SYNTHESIS CORE</h2>
+                <div id="directive-output" class="placeholder">Awaiting synthesis command...</div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <button id="synthesize-btn">SYNTHESIZE TRADE DIRECTIVE</button>
+        </footer>
     </div>
-  </section>
 
-  <p class="footer-note" style="margin-top:14px">
-    Ollama calls require CORS permission from your server (e.g., running on localhost). When unreachable, this app automatically falls back to simulated responses.
-  </p>
-</div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const btcPriceEl = document.getElementById('btc-price');
+            const btcChangeEl = document.getElementById('btc-change');
+            const btcVolumeEl = document.getElementById('btc-volume');
+            const sentimentEl = document.getElementById('sentiment');
+            const newsItemEl = document.getElementById('news-item');
+            const directiveOutput = document.getElementById('directive-output');
+            const synthesizeBtn = document.getElementById('synthesize-btn');
+            const statusLight = document.getElementById('status-light');
+            const statusText = document.getElementById('status-text');
+            const chartCanvas = document.getElementById('market-chart');
+            const timeframeButtons = document.querySelectorAll('.timeframe-btn');
 
-<script>
-// ================== DOM ADAPTER ==================
-function setupDOMAdapter(container){
-  container.style.position = 'relative';
-  container.style.width = '100%';
-  container.style.minHeight = '100vh';
-  container.style.overflow = 'hidden';
-  const layers = [];
-  for(let i=0;i<20;i++){
-    const layer = document.createElement('div');
-    layer.className = 'parallax-layer';
-    layer.style.zIndex = i;
-    layer.style.background = i % 5 === 0 ? 'radial-gradient(600px 600px at '+(i*5)+'% '+(i*2)+'%, rgba(0,255,204,.06), transparent 70%)' : '';
-    container.appendChild(layer);
-    layers.push(layer);
-  }
-  return layers;
-}
-const parallaxLayers = setupDOMAdapter(document.getElementById('appRoot'));
+            let isDataStreamActive = true;
+            let marketChart;
+            let activeTimeframe = '1H';
+            let historicalData = { '1H': null, '24H': null, '7D': null };
 
-// ================== UTIL & LOGGING ==================
-const $ = (s)=>document.querySelector(s);
-const consoleEl = $("#console");
-function ts(){ return new Date().toISOString().replace('T',' ').replace('Z',''); }
-function log(level, msg, cls){
-  const line = document.createElement('div');
-  line.className = 'line ' + (cls||'');
-  line.textContent = `[${ts()}] [${level}] ${msg}`;
-  consoleEl.appendChild(line);
-  consoleEl.scrollTop = consoleEl.scrollHeight;
-  persistLog(line.textContent);
-}
-function logInfo(m){ log('INFO', m, 'muted'); }
-function logOk(m){ log('OK', m, 'ok'); }
-function logWarn(m){ log('WARN', m, 'warn'); }
-function logErr(m){ log('ERROR', m, 'err'); }
+            const newsHeadlines = [
+                { text: "FED CHAIR HINTS AT STABLE RATES, BOOSTING MARKET CONFIDENCE", sentiment: 'positive' },
+                { text: "MAJOR EXCHANGE REPORTS SECURITY BREACH, MARKET JITTERS EVIDENT", sentiment: 'negative' },
+                { text: "ETF INFLOWS REACH RECORD HIGHS, INSTITUTIONAL ADOPTION SURGES", sentiment: 'positive' },
+                { text: "REGULATORY UNCERTAINTY IN ASIA CAUSES REGIONAL SELL-OFF", sentiment: 'negative' },
+                { text: "BITCOIN HASH RATE HITS NEW ALL-TIME HIGH, NETWORK SECURE", sentiment: 'positive' },
+                { text: "STABLECOIN ISSUER FACES SCRUTINY, LIQUIDITY CONCERNS RISE", sentiment: 'negative' },
+                { text: "ANALYSTS PREDICT VOLATILITY SQUEEZE, RANGE-BOUND TRADING EXPECTED", sentiment: 'neutral' }
+            ];
 
-// localStorage logs
-const LOG_KEY = 'ai.logs.v2';
-function persistLog(text){
-  const arr = JSON.parse(localStorage.getItem(LOG_KEY) || '[]');
-  arr.push(text);
-  // cap to 2000 lines
-  if(arr.length > 2000) arr.splice(0, arr.length-2000);
-  localStorage.setItem(LOG_KEY, JSON.stringify(arr));
-}
-function loadLogs(){
-  const arr = JSON.parse(localStorage.getItem(LOG_KEY) || '[]');
-  arr.forEach(l=>{
-    const d=document.createElement('div'); d.className='line'; d.textContent=l;
-    consoleEl.appendChild(d);
-  });
-}
+            let marketState = {
+                price: 68521.44,
+                change: 2.15,
+                volume: 45.2,
+                sentiment: 72,
+                sentimentText: 'Greed',
+                news: newsHeadlines[0].text
+            };
 
-// ================== CONFIG ==================
-const CFG_KEY = 'ai.config.v2';
-const defaultCfg = {
-  model: 'gemma3:1b',
-  temperature: 0.7,
-  maxTokens: 1000,
-  timeout: 30,
-  endpoint: '' // e.g. http://localhost:11434/api/generate
-};
-function getCfg(){
-  return Object.assign({}, defaultCfg, JSON.parse(localStorage.getItem(CFG_KEY) || '{}'));
-}
-function saveCfg(cfg){
-  localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
-  logOk('Configuration saved.');
-}
-function loadCfgToUI(){
-  const cfg = getCfg();
-  $("#modelInput").value = cfg.model;
-  $("#tempInput").value = cfg.temperature;
-  $("#maxTokensInput").value = cfg.maxTokens;
-  $("#timeoutInput").value = cfg.timeout;
-  $("#ollamaEndpoint").value = cfg.endpoint;
-  $("#tunTemp").value = cfg.temperature;
-  $("#tunMaxTok").value = cfg.maxTokens;
-  $("#tunTimeout").value = cfg.timeout;
-}
+            const typeWriter = async (element, text) => {
+                element.innerHTML = '';
+                let content = '';
+                for (let i = 0; i < text.length; i++) {
+                    content += text.charAt(i);
+                    element.innerHTML = content + '<span class="cursor"></span>';
+                    await new Promise(resolve => setTimeout(resolve, 15));
+                }
+                element.innerHTML = content;
+            };
 
-// ================== OLLAMA CALLS (with fallback) ==================
-async function withTimeout(promise, ms){
-  const ctl = new AbortController();
-  const t = setTimeout(()=>ctl.abort(), ms);
-  try{
-    const res = await promise(ctl.signal);
-    return res;
-  }finally{ clearTimeout(t); }
-}
-async function aiProcess(prompt){
-  const cfg = getCfg();
-  logInfo(`Processing prompt: ${prompt.slice(0,100)}…`);
+            const generateChartData = (timeframe, basePrice) => {
+                let points, unit;
+                switch (timeframe) {
+                    case '1H': points = 60; unit = 'minute'; break;
+                    case '24H': points = 24; unit = 'hour'; break;
+                    case '7D': points = 7; unit = 'day'; break;
+                    default: points = 60; unit = 'minute';
+                }
 
-  if(!cfg.endpoint){
-    logWarn('No Ollama endpoint set — using simulated response.');
-    return `Ollama not available. Simulated response to: ${prompt}`;
-  }
+                const labels = [];
+                const prices = [];
+                const volumes = [];
+                let currentPrice = basePrice * (1 - (Math.random() * 0.02)); // Start slightly lower
+                const now = Date.now();
 
-  try{
-    const payload = { model: cfg.model, prompt, stream:false, options: { temperature: Number(cfg.temperature)||0.7, num_predict: Number(cfg.maxTokens)||1000 } };
-    const res = await withTimeout(async (signal)=>{
-      return fetch(cfg.endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload), signal });
-    }, (Number(cfg.timeout)||30)*1000);
+                for (let i = points - 1; i >= 0; i--) {
+                    const date = new Date(now - i * (unit === 'minute' ? 60000 : unit === 'hour' ? 3600000 : 86400000));
+                    if (timeframe === '1H' || timeframe === '24H') labels.push(date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+                    else if (timeframe === '7D') labels.push(date.toLocaleDateString([], { month: 'short', day: 'numeric' }));
 
-    if(!res.ok){
-      logWarn(`Ollama responded ${res.status}. Falling back.`);
-      return `Ollama error (${res.status}). Simulated response to: ${prompt}`;
-    }
-    const data = await res.json();
-    const out = data.response || data.output || '';
-    logOk('AI response generated.');
-    return out || '[[Empty response]]';
-  }catch(e){
-    logWarn('Ollama not reachable or CORS blocked — using simulated response.');
-    return `Ollama not available. Simulated response to: ${prompt}`;
-  }
-}
-async function ollamaTags(){
-  const cfg = getCfg();
-  if(!cfg.endpoint){
-    logWarn('No endpoint set for listing models.');
-    return { ok:false, models:[] };
-  }
-  try{
-    const base = cfg.endpoint.replace(/\/api\/generate.*$/,''); // crude base
-    const url = base + '/api/tags';
-    const res = await fetch(url, { method:'GET' });
-    if(!res.ok) throw new Error('bad status');
-    const data = await res.json();
-    const models = (data.models || data || []).map(m=>m.name || m.model || String(m));
-    logOk(`Fetched ${models.length} model(s) from Ollama.`);
-    return { ok:true, models };
-  }catch(e){
-    logWarn('Failed to fetch models (CORS or server).');
-    return { ok:false, models:[] };
-  }
-}
+                    const priceFluctuation = (Math.random() - 0.48) * (timeframe === '1H' ? 0.001 : 0.01);
+                    currentPrice *= (1 + priceFluctuation);
+                    prices.push(currentPrice);
 
-// ================== CHAT ==================
-const chatLog = $("#chatLog");
-function addChat(role, text){
-  const div = document.createElement('div');
-  div.className = 'chat-msg ' + (role==='me'?'me':'ai');
-  div.textContent = (role==='me'?'You: ':'AI: ') + text;
-  chatLog.appendChild(div);
-  chatLog.scrollTop = chatLog.scrollHeight;
-}
-async function sendChat(msg){
-  if(!msg.trim()) return;
-  addChat('me', msg);
-  $('#chatInput').value = '';
-  const reply = await aiProcess(msg);
-  addChat('ai', reply);
-}
+                    const volume = Math.random() * 1000 + 500 + (Math.abs(priceFluctuation) * 100000);
+                    volumes.push(volume);
+                }
+                return { labels, prices, volumes };
+            };
 
-// ================== CRYPTO ==================
-async function sha256Hex(str){
-  const enc = new TextEncoder().encode(str);
-  const buf = await crypto.subtle.digest('SHA-256', enc);
-  const view = new Uint8Array(buf);
-  return [...view].map(b=>b.toString(16).padStart(2,'0')).join('');
-}
-async function cryptoHandshake(message, handshakeId){
-  if(!message){ logErr('No message provided for handshake'); return "Usage: crypto handshake <message> [id]"; }
-  const id = handshakeId || ('handshake_'+Math.floor(Date.now()/1000));
-  const timestamp = Math.floor(Date.now()/1000);
-  const hash = await sha256Hex(`${message}${timestamp}${id}`);
-  logOk(`Handshake completed: ${id}`);
-  return `Handshake ID: ${id}\nTimestamp: ${timestamp}\nMessage: ${message}\nSHA256 Hash: ${hash}\nComplete: ✓`;
-}
-function cryptoEntropy(length){
-  const n = Number(length)||64;
-  if(n<1 || n>1024){ logErr(`Invalid length: ${n}. Must be between 1-1024`); return ""; }
-  const bytes = new Uint8Array(Math.ceil(n/2));
-  crypto.getRandomValues(bytes);
-  const hex = [...bytes].map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,n);
-  logOk(`Entropy generation completed (${n} hex chars).`);
-  return hex;
-}
+            const initChart = () => {
+                historicalData['1H'] = generateChartData('1H', marketState.price);
+                historicalData['24H'] = generateChartData('24H', marketState.price);
+                historicalData['7D'] = generateChartData('7D', marketState.price);
+                
+                const ctx = chartCanvas.getContext('2d');
+                const priceGradient = ctx.createLinearGradient(0, 0, 0, 400);
+                priceGradient.addColorStop(0, 'rgba(0, 255, 255, 0.4)');
+                priceGradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
 
-// ================== SYSTEM STATUS ==================
-async function systemStatus(){
-  const cfg = getCfg();
-  const nav = navigator;
-  const mem = performance && performance.memory ? performance.memory : null;
-  let ollamaStatus = '✗ Not checked';
-  if(cfg.endpoint){
-    try{
-      const base = cfg.endpoint.replace(/\/api\/generate.*$/,'');
-      const v = await fetch(base + '/api/version', { method:'GET' });
-      if(v.ok) ollamaStatus = '✓ Reachable'; else ollamaStatus = '✗ Unreachable';
-    }catch{ ollamaStatus = '✗ Unreachable'; }
-  }else{
-    ollamaStatus = '✗ Not configured';
-  }
-  const report = [
-    "=== SYSTEM STATUS REPORT (Browser) ===",
-    "Generated: " + new Date().toString(),
-    "",
-    "Navigator: " + (nav.userAgent || 'unknown'),
-    "Platform: " + (nav.platform || 'unknown'),
-    "Cores: " + (nav.hardwareConcurrency || 'unknown'),
-    "Online: " + (nav.onLine ? 'Yes' : 'No'),
-    "Memory (approx): " + (mem ? `${(mem.usedJSHeapSize/1e6).toFixed(1)}MB / ${(mem.jsHeapSizeLimit/1e6).toFixed(0)}MB` : "n/a"),
-    "",
-    "AI Configuration:",
-    `  Model: ${cfg.model}`,
-    `  Temperature: ${cfg.temperature}`,
-    `  Max Tokens: ${cfg.maxTokens}`,
-    `  Timeout: ${cfg.timeout}s`,
-    "",
-    `Ollama: ${ollamaStatus}`
-  ].join("\n");
-  logInfo('System status generated.');
-  return report;
-}
+                marketChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: historicalData[activeTimeframe].labels,
+                        datasets: [
+                            {
+                                type: 'line', label: 'BTC Price', data: historicalData[activeTimeframe].prices,
+                                borderColor: 'var(--glow-cyan)', backgroundColor: priceGradient,
+                                fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, pointBackgroundColor: 'var(--glow-cyan)',
+                                yAxisID: 'yPrice',
+                            },
+                            {
+                                type: 'bar', label: 'Volume', data: historicalData[activeTimeframe].volumes,
+                                backgroundColor: 'rgba(255, 0, 255, 0.25)', borderColor: 'var(--glow-magenta)', borderWidth: 1,
+                                yAxisID: 'yVolume',
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false }, tooltip: {
+                            mode: 'index', intersect: false, backgroundColor: 'rgba(10, 14, 23, 0.9)',
+                            titleFont: { family: 'var(--font-mono)' }, bodyFont: { family: 'var(--font-mono)' },
+                            titleColor: 'var(--glow-cyan)', bodyColor: 'var(--text-primary)',
+                            borderColor: 'var(--border-glow)', borderWidth: 1, padding: 10,
+                            callbacks: {
+                                label: (c) => c.dataset.yAxisID === 'yPrice' 
+                                    ? `${c.dataset.label}: ${c.parsed.y.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`
+                                    : `${c.dataset.label}: ${c.parsed.y.toFixed(2)}`
+                            }
+                        }},
+                        interaction: { mode: 'index', intersect: false },
+                        scales: {
+                            x: { ticks: { color: 'var(--text-secondary)', maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }, grid: { color: 'rgba(0, 255, 255, 0.1)' } },
+                            yPrice: {
+                                type: 'linear', position: 'left',
+                                ticks: { color: 'var(--text-secondary)', callback: value => `$${(value/1000).toFixed(0)}k` },
+                                grid: { color: 'rgba(0, 255, 255, 0.1)' }
+                            },
+                            yVolume: { type: 'linear', position: 'right', ticks: { display: false }, grid: { drawOnChartArea: false } }
+                        }
+                    }
+                });
+            };
+            
+            timeframeButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    activeTimeframe = button.dataset.timeframe;
+                    timeframeButtons.forEach(btn => btn.classList.remove('active'));
+                    button.classList.add('active');
 
-// ================== HELP TEXTS (ported) ==================
-const HELP_GENERAL = `AI Unified Tool v2.0.0
+                    const newData = historicalData[activeTimeframe];
+                    marketChart.data.labels = newData.labels;
+                    marketChart.data.datasets[0].data = newData.prices;
+                    marketChart.data.datasets[1].data = newData.volumes;
+                    marketChart.update();
+                });
+            });
 
-Usage: Use the GUI panels to run operations. This app mirrors the Bash tool's commands in a user-friendly interface. Configure your Ollama endpoint and model, then type prompts or use the specialized modules.
+            const updateMarketData = () => {
+                if (isDataStreamActive && Math.random() < 0.05) {
+                    isDataStreamActive = false;
+                    statusLight.classList.add('error'); statusText.textContent = "DATASTREAM OFFLINE";
+                    synthesizeBtn.disabled = true; synthesizeBtn.textContent = "DATA OFFLINE";
+                    synthesizeBtn.classList.remove('is-synthesizing');
+                } else if (!isDataStreamActive && Math.random() < 0.3) {
+                    isDataStreamActive = true;
+                    statusLight.classList.remove('error'); statusText.textContent = "DATASTREAM ACTIVE";
+                    synthesizeBtn.disabled = false; synthesizeBtn.textContent = "SYNTHESIZE TRADE DIRECTIVE";
+                }
 
-- Main prompt: For general text generation.
-- Chat: For conversational AI.
-- Modules: For specific tasks like crypto and system analysis.
-- Config is saved to your browser's LocalStorage.
-`;
-const HELP_CRYPTO = `Cryptographic Operations
+                if (!isDataStreamActive) return;
 
-- Handshake: Simulates a cryptographic handshake. Provide a message and an optional ID. It generates a timestamp and a SHA-256 hash of the combined data, useful for verifying data integrity or as a simple proof-of-work.
+                const price_fluctuation = (Math.random() - 0.5) * 0.005; // +/- 0.5%
+                marketState.price *= (1 + price_fluctuation);
+                marketState.change += (Math.random() - 0.5) * 0.1;
+                marketState.volume += (Math.random() - 0.5) * 0.2;
+                marketState.sentiment = Math.max(10, Math.min(90, marketState.sentiment + Math.floor((Math.random() - 0.5) * 4)));
+                
+                if (Math.random() < 0.1) {
+                    const randomNews = newsHeadlines[Math.floor(Math.random() * newsHeadlines.length)];
+                    marketState.news = randomNews.text;
+                    if (randomNews.sentiment === 'positive') marketState.sentiment = Math.min(90, marketState.sentiment + 5);
+                    if (randomNews.sentiment === 'negative') marketState.sentiment = Math.max(10, marketState.sentiment - 5);
+                }
+                
+                marketState.sentimentText = marketState.sentiment > 75 ? 'Extreme Greed' : marketState.sentiment > 55 ? 'Greed' : marketState.sentiment < 25 ? 'Extreme Fear' : marketState.sentiment < 45 ? 'Fear' : 'Neutral';
 
-- Entropy: Generates a cryptographically secure random hexadecimal string of a specified length (1-1024). Useful for creating keys, salts, or any data requiring high-quality randomness.
-`;
-const HELP_SYSTEM = `System & Tuning
+                btcPriceEl.textContent = `$${marketState.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                btcChangeEl.textContent = `${marketState.change >= 0 ? '+' : ''}${marketState.change.toFixed(2)}%`;
+                btcChangeEl.className = marketState.change >= 0 ? 'positive' : 'negative';
+                btcVolumeEl.textContent = `$${marketState.volume.toFixed(1)}B`;
+                sentimentEl.textContent = `${marketState.sentiment} (${marketState.sentimentText})`;
+                sentimentEl.className = marketState.sentiment >= 50 ? 'positive' : 'negative';
+                newsItemEl.textContent = marketState.news;
+                
+                if (marketChart && activeTimeframe === '1H') {
+                    const newLabel = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    marketChart.data.labels.push(newLabel);
+                    marketChart.data.datasets[0].data.push(marketState.price);
+                    marketChart.data.datasets[1].data.push(Math.random() * 1000 + 500 + Math.abs(price_fluctuation * 200000));
+                    
+                    marketChart.data.labels.shift();
+                    marketChart.data.datasets[0].data.shift();
+                    marketChart.data.datasets[1].data.shift();
+                    
+                    marketChart.update('none');
+                }
+            };
 
-- System Status: Displays a report of your browser environment, AI configuration, and the status of the Ollama connection.
+            const generateDirective = () => {
+                if (Math.random() < 0.3) throw new Error("AI core synchronization failed. Unable to compute strategy.");
+                const price = marketState.price;
+                let directive = `TRADE DIRECTIVE: ${Date.now()}\nASSET: BTC/USD\nSTATUS: AI SYNTHESIS COMPLETE\n\n// ANALYSIS:\nCurrent Price: $${price.toFixed(2)}\n24h Momentum: ${marketState.change.toFixed(2)}%\nMarket Sentiment: ${marketState.sentiment} (${marketState.sentimentText})\nPrimary Intel: ${marketState.news}\n\n`;
+                if (marketState.sentiment > 65 && marketState.change > 1) {
+                    directive += `// STRATEGIC CONCLUSION:\nHigh positive sentiment coupled with strong upward momentum indicates a continuation of the bullish trend. Institutional inflows suggest robust support levels.\n\n// ACTIONABLE DIRECTIVE:\nEXECUTE LONG POSITION.\n- Entry Zone: $${(price * 0.995).toFixed(2)} - $${price.toFixed(2)}\n- Take-Profit 1: $${(price * 1.03).toFixed(2)}\n- Stop-Loss: $${(price * 0.98).toFixed(2)}\n- Confidence Score: 88%`;
+                } else if (marketState.sentiment < 35 && marketState.change < -1) {
+                     directive += `// STRATEGIC CONCLUSION:\nDominant fear sentiment and negative momentum, amplified by regulatory concerns, suggest further downside potential. Liquidity appears thin at current levels.\n\n// ACTIONABLE DIRECTIVE:\nEXECUTE SHORT POSITION.\n- Entry Zone: $${price.toFixed(2)} - $${(price * 1.005).toFixed(2)}\n- Take-Profit 1: $${(price * 0.97).toFixed(2)}\n- Stop-Loss: $${(price * 1.02).toFixed(2)}\n- Confidence Score: 85%`;
+                } else {
+                    directive += `// STRATEGIC CONCLUSION:\nMixed signals present. Market is in a consolidation phase with conflicting sentiment and price action. Volatility is expected to remain low in the short term.\n\n// ACTIONABLE DIRECTIVE:\nMAINTAIN NEUTRAL STANCE.\n- Strategy: Range trading.\n- Support Level: $${(price * 0.98).toFixed(2)}\n- Resistance Level: $${(price * 1.02).toFixed(2)}\n- Action: Monitor for a breakout above resistance or a breakdown below support before committing capital.\n- Confidence Score: 60%`;
+                }
+                return directive.trim();
+            };
 
-- Tuning: Allows you to adjust AI model parameters like temperature (creativity), max tokens (response length), and timeout. Changes made here apply to all AI operations.
-`;
-const HELP_MODEL = `Model Management
+            synthesizeBtn.addEventListener('click', async () => {
+                synthesizeBtn.disabled = true;
+                synthesizeBtn.textContent = "SYNTHESIZING...";
+                synthesizeBtn.classList.add('is-synthesizing');
+                directiveOutput.classList.remove('placeholder');
+                directiveOutput.innerHTML = '';
+                try {
+                    directiveOutput.innerHTML = '<span class="placeholder">Parsing market vectors...</span>';
+                    await new Promise(r => setTimeout(r, 1000));
+                    directiveOutput.innerHTML = '<span class="placeholder">Correlating sentiment data...</span>';
+                    await new Promise(r => setTimeout(r, 1000));
+                    directiveOutput.innerHTML = '<span class="placeholder">Generating optimal strategy...</span>';
+                    await new Promise(r => setTimeout(r, 1000));
+                    
+                    const directiveText = generateDirective();
+                    await typeWriter(directiveOutput, directiveText);
+                } catch (error) {
+                    console.error("Synthesis failed:", error);
+                    const errorMessage = `// SYNTHESIS FAILED\n\nERROR: ${error.message}\n\nACTION: Retry synthesis protocol.`;
+                    directiveOutput.innerHTML = `<div class="error-message">${errorMessage}</div>`;
+                } finally {
+                    synthesizeBtn.disabled = false;
+                    synthesizeBtn.textContent = "RE-SYNTHESIZE DIRECTIVE";
+                    synthesizeBtn.classList.remove('is-synthesizing');
+                }
+            });
 
-- List Models: Fetches and displays available models from your Ollama instance.
-- Switch Model: Allows you to change the active model by typing its name in the model input field.
-- The default model is 'gemma3:1b'. Ensure any model you use is available on your Ollama server.
-`;
-const HELP_TUNING = `Tuning Parameters
+            initChart();
+            setInterval(updateMarketData, 2000);
+        });
+    </script>
 
-- Temperature: Controls randomness. Lower values (e.g., 0.2) make the output more deterministic and focused. Higher values (e.g., 1.0) make it more creative and diverse.
-
-- Max Tokens: The maximum number of tokens (words/pieces of words) the model can generate in a single response.
-
-- Timeout: The maximum time in seconds to wait for a response from the Ollama server before giving up.
-`;
-
-// ================== STATE PERSISTENCE ==================
-const STATE_PROMPT_KEY = 'ai.state.prompt.v2';
-const STATE_CHAT_KEY = 'ai.state.chatHistory.v2';
-
-function saveState() {
-  const promptValue = $('#promptInput').value;
-  const chatHistoryHTML = $('#chatLog').innerHTML;
-  localStorage.setItem(STATE_PROMPT_KEY, promptValue);
-  localStorage.setItem(STATE_CHAT_KEY, chatHistoryHTML);
-}
-
-function loadState() {
-  const savedPrompt = localStorage.getItem(STATE_PROMPT_KEY);
-  const savedChatHistory = localStorage.getItem(STATE_CHAT_KEY);
-  if (savedPrompt) {
-    $('#promptInput').value = savedPrompt;
-  }
-  if (savedChatHistory) {
-    $('#chatLog').innerHTML = savedChatHistory;
-    $('#chatLog').scrollTop = $('#chatLog').scrollHeight;
-  }
-  if(savedPrompt || savedChatHistory){
-      logInfo('Restored previous session state.');
-  }
-}
-
-// ================== CHARTING ==================
-function generateFakePriceData(base, quote, points = 60) {
-    const data = [];
-    // Use token names to seed a simple pseudo-random generator for consistent charts
-    let seed = 0;
-    for (let i = 0; i < base.length; i++) seed += base.charCodeAt(i);
-    for (let i = 0; i < quote.length; i++) seed -= quote.charCodeAt(i);
-    
-    let price = Math.abs(seed * 0.1) + 10;
-    for (let i = 0; i < points; i++) {
-        data.push({ time: i, price });
-        const change = (Math.sin(seed * i * 0.1) * 0.5 + (Math.random() - 0.5)) * (price * 0.05);
-        price += change;
-        if (price < 1) price = 1;
-    }
-    return data;
-}
-
-function renderSwapChart(data) {
-    const container = $('#swapChartContainer');
-    const tooltip = $('#swapChartTooltip');
-    container.innerHTML = ''; // Clear previous chart, but keep tooltip div
-    container.appendChild(tooltip); // Re-add tooltip
-
-    const svgNS = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(svgNS, "svg");
-    const { width, height } = container.getBoundingClientRect();
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-
-    const padding = 8;
-    const prices = data.map(p => p.price);
-    const minPrice = Math.min(...prices);
-    const maxPrice = Math.max(...prices);
-    const priceRange = maxPrice - minPrice || 1;
-
-    const points = data.map((d, i) => {
-        const x = padding + (i / (data.length - 1)) * (width - 2 * padding);
-        const y = height - padding - ((d.price - minPrice) / priceRange) * (height - 2 * padding);
-        return `${x},${y}`;
-    }).join(' ');
-
-    const line = document.createElementNS(svgNS, 'polyline');
-    line.setAttribute('class', 'price-line');
-    line.setAttribute('points', points);
-    svg.appendChild(line);
-
-    // Hover elements
-    const hoverLine = document.createElementNS(svgNS, 'line');
-    hoverLine.setAttribute('class', 'hover-line');
-    hoverLine.setAttribute('y1', 0);
-    hoverLine.setAttribute('y2', height);
-    hoverLine.style.display = 'none';
-    svg.appendChild(hoverLine);
-
-    const hoverDot = document.createElementNS(svgNS, 'circle');
-    hoverDot.setAttribute('class', 'hover-dot');
-    hoverDot.setAttribute('r', 4);
-    hoverDot.style.display = 'none';
-    svg.appendChild(hoverDot);
-
-    svg.addEventListener('mousemove', e => {
-        const rect = svg.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        
-        const index = Math.round(((mouseX - padding) / (width - 2 * padding)) * (data.length - 1));
-        if (index < 0 || index >= data.length) return;
-
-        const point = data[index];
-        const pointCoords = {
-            x: padding + (index / (data.length - 1)) * (width - 2 * padding),
-            y: height - padding - ((point.price - minPrice) / priceRange) * (height - 2 * padding)
-        };
-        
-        hoverLine.setAttribute('x1', pointCoords.x);
-        hoverLine.setAttribute('x2', pointCoords.x);
-        hoverDot.setAttribute('cx', pointCoords.x);
-        hoverDot.setAttribute('cy', pointCoords.y);
-        
-        tooltip.textContent = `Price: ${point.price.toFixed(4)}`;
-        tooltip.style.left = `${pointCoords.x}px`;
-        tooltip.style.top = `${pointCoords.y}px`;
-
-        hoverLine.style.display = 'block';
-        hoverDot.style.display = 'block';
-        tooltip.style.display = 'block';
-    });
-
-    svg.addEventListener('mouseleave', () => {
-        hoverLine.style.display = 'none';
-        hoverDot.style.display = 'none';
-        tooltip.style.display = 'none';
-    });
-
-    container.appendChild(svg);
-}
-
-
-// ================== UI BINDINGS ==================
-function setupUI(){
-  loadCfgToUI();
-  loadLogs();
-  loadState();
-  logInfo('AI Unified Tool v2.0.0 initialized.');
-
-  // Generic tab handler
-  document.body.addEventListener('click', e => {
-    const button = e.target.closest('.tab-btn');
-    if (!button) return;
-
-    const tabsContainer = button.closest('.tabs');
-    if (!tabsContainer) return;
-
-    const parent = tabsContainer.closest('.card');
-    if (!parent) return;
-
-    const tabId = button.dataset.tab;
-
-    tabsContainer.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    button.classList.add('active');
-
-    parent.querySelectorAll('.tab-panel').forEach(panel => panel.classList.remove('active'));
-    const activePanel = parent.querySelector('#' + tabId);
-    if(activePanel) activePanel.classList.add('active');
-  });
-
-  // Main controls
-  $('#runBtn').addEventListener('click', async ()=>{
-    const p = $('#promptInput').value;
-    if(!p) return logWarn('Prompt is empty.');
-    const res = await aiProcess(p);
-    logInfo('Response:\n' + res);
-  });
-  $('#helpBtn').addEventListener('click', ()=>logInfo(HELP_GENERAL));
-  $('#saveCfgBtn').addEventListener('click', ()=>{
-    saveCfg({
-      model: $("#modelInput").value,
-      temperature: Number($("#tempInput").value),
-      maxTokens: Number($("#maxTokensInput").value),
-      timeout: Number($("#timeoutInput").value),
-      endpoint: $("#ollamaEndpoint").value,
-    });
-  });
-  $('#listModelsBtn').addEventListener('click', async ()=>{
-    const {ok, models} = await ollamaTags();
-    if(ok) logInfo('Available models:\n' + models.join('\n'));
-    else logErr('Could not retrieve models.');
-  });
-  $('#switchModelBtn').addEventListener('click', ()=>logInfo(`Model set to: ${$('#modelInput').value}. Save config to persist.`));
-  $('#clearConsoleBtn').addEventListener('click', ()=>{ consoleEl.innerHTML = ''; });
-
-  // Chat
-  $('#sendChatBtn').addEventListener('click', ()=>sendChat($('#chatInput').value));
-  $('#chatInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendChat($('#chatInput').value); });
-  $('#resetChatBtn').addEventListener('click', ()=>{ chatLog.innerHTML=''; logInfo('Chat history cleared.'); });
-  
-  // Console
-  $('#exportLogsBtn').addEventListener('click', ()=>{
-      const logs = JSON.parse(localStorage.getItem(LOG_KEY) || '[]').join('\n');
-      const blob = new Blob([logs], {type:'text/plain'});
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `ai-tool-logs-${Date.now()}.txt`;
-      a.click();
-      logOk('Logs exported.');
-  });
-  $('#purgeLogsBtn').addEventListener('click', ()=>{
-      localStorage.removeItem(LOG_KEY);
-      consoleEl.innerHTML = '';
-      logWarn('All logs purged.');
-  });
-
-  // Crypto
-  $('#hsRunBtn').addEventListener('click', async ()=>{
-      const res = await cryptoHandshake($('#hsMessage').value, $('#hsId').value);
-      logInfo('Handshake Result:\n' + res);
-  });
-  $('#entropyBtn').addEventListener('click', ()=>{
-      $('#entropyOut').value = cryptoEntropy($('#entropyLen').value);
-  });
-
-  // System
-  $('#sysStatusBtn').addEventListener('click', async ()=>{
-      $('#sysReport').textContent = await systemStatus();
-  });
-  $('#tunApplyBtn').addEventListener('click', ()=>{
-      $("#tempInput").value = $("#tunTemp").value;
-      $("#maxTokensInput").value = $("#tunMaxTok").value;
-      $("#timeoutInput").value = $("#tunTimeout").value;
-      logOk('Tuning parameters applied. Save config to persist.');
-  });
-
-  // Help details
-  $('#helpGeneral').textContent = HELP_GENERAL;
-  $('#helpCrypto').textContent = HELP_CRYPTO;
-  $('#helpSystem').textContent = HELP_SYSTEM;
-  $('#helpModel').textContent = HELP_MODEL;
-  $('#helpTuning').textContent = HELP_TUNING;
-
-  // BITBOY AI-DEX Module
-  $('#connectWalletBtn').addEventListener('click', () => {
-    logInfo('Simulating wallet connection...');
-    const walletAddress = '0x' + [...crypto.getRandomValues(new Uint8Array(20))].map(b => b.toString(16).padStart(2, '0')).join('');
-    const walletBalance = (Math.random() * 5 + 0.1).toFixed(4) + ' ETH';
-    $('#walletAddress').textContent = walletAddress;
-    $('#walletBalance').textContent = walletBalance;
-    $('#walletInfo').style.display = 'block';
-    $('#connectWalletBtn').textContent = 'Wallet Connected';
-    $('#connectWalletBtn').disabled = true;
-    logOk('Wallet connected (simulated).');
-  });
-  
-  const exchangeRates = {
-    'ETH': { 'USDT': 3000.52, 'ETH': 1 },
-    'BTC': { 'USDT': 60123.45, 'ETH': 20.04 },
-    'BITBOY': { 'USDT': 0.11, 'ETH': 0.000033 },
-    'USDT': { 'ETH': 1/3000.52, 'USDT': 1 }
-  };
-
-  function updateSwap() {
-    const fromToken = $('#swapFromToken').value;
-    const toToken = $('#swapToToken').value;
-    const fromAmount = parseFloat($('#swapFromAmount').value) || 0;
-    
-    if (fromToken === toToken) {
-      $('#swapToAmount').value = fromAmount.toFixed(6);
-      $('#swapRate').textContent = '1:1 Ratio';
-      renderSwapChart(generateFakePriceData(fromToken, toToken, 60).map(p => ({...p, price: 1})));
-      return;
-    }
-    const rate = exchangeRates[fromToken]?.[toToken];
-    if (!rate) {
-      $('#swapToAmount').value = 'N/A';
-      $('#swapRate').textContent = 'Rate not available';
-      renderSwapChart(generateFakePriceData(fromToken, toToken).map(p => ({...p, price: 0})));
-      return;
-    }
-    const toAmount = fromAmount * rate;
-    $('#swapToAmount').value = toAmount.toFixed(6);
-    $('#swapRate').textContent = `1 ${fromToken} ≈ ${rate.toFixed(4)} ${toToken}`;
-    const priceData = generateFakePriceData(fromToken, toToken).map(p => ({ ...p, price: p.price * rate }));
-    renderSwapChart(priceData);
-  }
-
-  ['swapFromAmount', 'swapFromToken', 'swapToToken'].forEach(id => {
-    const el = $('#' + id);
-    if(el) {
-      el.addEventListener('input', updateSwap);
-      el.addEventListener('change', updateSwap);
-    }
-  });
-  
-  $('#swapBtn').addEventListener('click', () => {
-    const fromToken = $('#swapFromToken').value;
-    const toToken = $('#swapToToken').value;
-    const fromAmount = $('#swapFromAmount').value;
-    const toAmount = $('#swapToAmount').value;
-    if (parseFloat(fromAmount) > 0 && toAmount !== 'N/A') {
-      logOk(`Swap simulated: ${fromAmount} ${fromToken} -> ${toAmount} ${toToken}`);
-    } else {
-      logWarn('Invalid swap parameters.');
-    }
-  });
-  
-  $('#aiSignalBtn').addEventListener('click', async () => {
-    logInfo('Requesting AI trade signal...');
-    $('#aiSignalOutput').textContent = 'Analyzing...';
-    const tokenMap = {'ETH': 'Ethereum', 'BTC': 'Bitcoin', 'BITBOY': 'BITBOY Token'};
-    const selectedToken = $('#swapFromToken').value;
-    const tokenFullName = tokenMap[selectedToken] || selectedToken;
-    
-    const prompt = `Act as a crypto trade analyst. Provide a short, 2-3 sentence market analysis for ${tokenFullName} (${selectedToken}) and then on a new line, give a clear trade signal: BUY, SELL, or HOLD.`;
-    const result = await aiProcess(prompt);
-    $('#aiSignalOutput').textContent = result;
-    logOk('AI trade signal received.');
-  });
-  
-  // Panel Filtering
-  const filterInput = $('#filterPanelsInput');
-  const allPanels = document.querySelectorAll('.grid .card.panel');
-  filterInput.addEventListener('input', (e) => {
-    const searchTerm = e.target.value.toLowerCase().trim();
-    allPanels.forEach(panel => {
-      const panelContent = panel.textContent.toLowerCase();
-      const isVisible = panelContent.includes(searchTerm);
-      panel.style.display = isVisible ? '' : 'none';
-    });
-  });
-
-  // Initial call to set swap values
-  updateSwap();
-
-  // Set up auto-saving
-  setInterval(() => {
-    saveState();
-    logInfo('Session state auto-saved.');
-  }, 30000);
-}
-
-setupUI();
-</script>
 </body>
 </html>
