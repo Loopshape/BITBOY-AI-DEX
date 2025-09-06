@@ -120,7 +120,24 @@ canvas.fullscreen-adapter {
 .wrapper { position:relative; width:100%; min-height:100vh; overflow:hidden; }
 .content { position:relative; z-index:2; padding:24px; }
 .grid { display:grid; grid-template-columns: 1.4fr .6fr; gap:16px; }
-@media (max-width: 1100px){ .grid { grid-template-columns:1fr; } }
+@media (max-width: 1100px){
+  .grid { grid-template-columns:1fr; }
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .search-bar {
+    width: 100%;
+    order: 2;
+  }
+  .search-bar input {
+    max-width: none;
+    margin: 0;
+  }
+  .brand { order: 1; }
+  .badges { order: 3; }
+}
 .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
 .stack { display:flex; flex-direction:column; gap:10px; }
 .card { padding:14px; border-radius:14px; border:2px solid #00ffcc55; background:rgba(10,20,20,0.35); box-shadow:0 0 24px rgba(0,255,204,.15) inset; }
@@ -151,15 +168,42 @@ hr.sep { border:0; border-top:1px dashed #00ffcc55; margin:10px 0; }
 /* Tabs */
 .tabs { display:flex; gap:8px; margin:8px 0; }
 .tab-btn { padding:6px 10px; border:1px solid #00ffcc55; border-radius:8px; }
-.tab-btn.active { border-color:#ffff33; color:#ffff33; box-shadow:0 0 12px #ffff33; }
-.tab-panel { display:none; }
-.tab-panel.active { display:block; }
+.tab-btn.active {
+  border-color:#ffff33;
+  color:#ffff33;
+  box-shadow:0 0 12px #ffff33;
+  transform: translateY(-2px);
+}
+.tab-panel {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: all 0.3s ease-out;
+  visibility: hidden;
+}
+.tab-panel.active {
+  max-height: 1000px; /* Generous height for content */
+  opacity: 1;
+  visibility: visible;
+}
 
 /* Header */
-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; }
+header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap: 16px; }
 .brand { display:flex; align-items:center; gap:10px; }
 .logo { width:34px; height:34px; border-radius:10px; background: radial-gradient(circle at 30% 30%, #00ffcc, #001111 60%); box-shadow:0 0 20px #00ffcc; }
 h1.title { letter-spacing:.5px; }
+
+/* Search Bar */
+.search-bar {
+  flex-grow: 1;
+  min-width: 200px;
+}
+.search-bar input {
+  width: 100%;
+  max-width: 450px;
+  display: block;
+  margin: 0 auto;
+}
 
 /* Badges */
 .badges { display:flex; gap:8px; flex-wrap:wrap; }
@@ -170,6 +214,52 @@ input[type="number"]{ width:90px; }
 input[type="text"]{ min-width:240px; }
 textarea{ min-height:100px; }
 .swap-interface select { flex-grow: 1; }
+
+/* Chart styles */
+.chart-container {
+  height: 150px;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid #00ffcc33;
+  border-radius: 8px;
+  margin-top: 10px;
+  position: relative;
+  overflow: hidden;
+}
+.chart-container svg {
+  width: 100%;
+  height: 100%;
+}
+.chart-container .price-line {
+  fill: none;
+  stroke: var(--color-neon-blue);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px var(--color-neon-blue));
+}
+.chart-tooltip {
+  position: absolute;
+  background: rgba(0,20,20,0.9);
+  border: 1px solid var(--color-neon-yellow);
+  color: var(--color-neon-yellow);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  pointer-events: none;
+  display: none;
+  z-index: 10;
+  white-space: nowrap;
+  transform: translate(-50%, -120%);
+}
+.chart-container .hover-line {
+    stroke: #ffff33aa;
+    stroke-width: 1;
+    stroke-dasharray: 3,3;
+}
+.chart-container .hover-dot {
+    fill: var(--color-neon-yellow);
+    stroke: #000;
+}
 </style>
 </head>
 <body>
@@ -183,6 +273,9 @@ textarea{ min-height:100px; }
         <h1 class="title">AI Unified Tool v2.0.0 — Neon GUI</h1>
         <div class="small">Rebased from Bash to browser — single-file, CORS-permitting Ollama integration</div>
       </div>
+    </div>
+    <div class="search-bar">
+      <input id="filterPanelsInput" type="text" placeholder="Filter panels by keyword...">
     </div>
     <div class="badges">
       <span class="tag">Single-file</span>
@@ -274,6 +367,10 @@ textarea{ min-height:100px; }
                   </select>
               </div>
               <p class="small" id="swapRate"></p>
+              <hr class="sep">
+              <div class="chart-container" id="swapChartContainer">
+                <div class="chart-tooltip" id="swapChartTooltip"></div>
+              </div>
               <button id="swapBtn">Swap</button>
           </div>
         </div>
@@ -626,10 +723,134 @@ const HELP_TUNING = `Tuning Parameters
 - Timeout: The maximum time in seconds to wait for a response from the Ollama server before giving up.
 `;
 
+// ================== STATE PERSISTENCE ==================
+const STATE_PROMPT_KEY = 'ai.state.prompt.v2';
+const STATE_CHAT_KEY = 'ai.state.chatHistory.v2';
+
+function saveState() {
+  const promptValue = $('#promptInput').value;
+  const chatHistoryHTML = $('#chatLog').innerHTML;
+  localStorage.setItem(STATE_PROMPT_KEY, promptValue);
+  localStorage.setItem(STATE_CHAT_KEY, chatHistoryHTML);
+}
+
+function loadState() {
+  const savedPrompt = localStorage.getItem(STATE_PROMPT_KEY);
+  const savedChatHistory = localStorage.getItem(STATE_CHAT_KEY);
+  if (savedPrompt) {
+    $('#promptInput').value = savedPrompt;
+  }
+  if (savedChatHistory) {
+    $('#chatLog').innerHTML = savedChatHistory;
+    $('#chatLog').scrollTop = $('#chatLog').scrollHeight;
+  }
+  if(savedPrompt || savedChatHistory){
+      logInfo('Restored previous session state.');
+  }
+}
+
+// ================== CHARTING ==================
+function generateFakePriceData(base, quote, points = 60) {
+    const data = [];
+    // Use token names to seed a simple pseudo-random generator for consistent charts
+    let seed = 0;
+    for (let i = 0; i < base.length; i++) seed += base.charCodeAt(i);
+    for (let i = 0; i < quote.length; i++) seed -= quote.charCodeAt(i);
+    
+    let price = Math.abs(seed * 0.1) + 10;
+    for (let i = 0; i < points; i++) {
+        data.push({ time: i, price });
+        const change = (Math.sin(seed * i * 0.1) * 0.5 + (Math.random() - 0.5)) * (price * 0.05);
+        price += change;
+        if (price < 1) price = 1;
+    }
+    return data;
+}
+
+function renderSwapChart(data) {
+    const container = $('#swapChartContainer');
+    const tooltip = $('#swapChartTooltip');
+    container.innerHTML = ''; // Clear previous chart, but keep tooltip div
+    container.appendChild(tooltip); // Re-add tooltip
+
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    const { width, height } = container.getBoundingClientRect();
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+    const padding = 8;
+    const prices = data.map(p => p.price);
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    const priceRange = maxPrice - minPrice || 1;
+
+    const points = data.map((d, i) => {
+        const x = padding + (i / (data.length - 1)) * (width - 2 * padding);
+        const y = height - padding - ((d.price - minPrice) / priceRange) * (height - 2 * padding);
+        return `${x},${y}`;
+    }).join(' ');
+
+    const line = document.createElementNS(svgNS, 'polyline');
+    line.setAttribute('class', 'price-line');
+    line.setAttribute('points', points);
+    svg.appendChild(line);
+
+    // Hover elements
+    const hoverLine = document.createElementNS(svgNS, 'line');
+    hoverLine.setAttribute('class', 'hover-line');
+    hoverLine.setAttribute('y1', 0);
+    hoverLine.setAttribute('y2', height);
+    hoverLine.style.display = 'none';
+    svg.appendChild(hoverLine);
+
+    const hoverDot = document.createElementNS(svgNS, 'circle');
+    hoverDot.setAttribute('class', 'hover-dot');
+    hoverDot.setAttribute('r', 4);
+    hoverDot.style.display = 'none';
+    svg.appendChild(hoverDot);
+
+    svg.addEventListener('mousemove', e => {
+        const rect = svg.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        
+        const index = Math.round(((mouseX - padding) / (width - 2 * padding)) * (data.length - 1));
+        if (index < 0 || index >= data.length) return;
+
+        const point = data[index];
+        const pointCoords = {
+            x: padding + (index / (data.length - 1)) * (width - 2 * padding),
+            y: height - padding - ((point.price - minPrice) / priceRange) * (height - 2 * padding)
+        };
+        
+        hoverLine.setAttribute('x1', pointCoords.x);
+        hoverLine.setAttribute('x2', pointCoords.x);
+        hoverDot.setAttribute('cx', pointCoords.x);
+        hoverDot.setAttribute('cy', pointCoords.y);
+        
+        tooltip.textContent = `Price: ${point.price.toFixed(4)}`;
+        tooltip.style.left = `${pointCoords.x}px`;
+        tooltip.style.top = `${pointCoords.y}px`;
+
+        hoverLine.style.display = 'block';
+        hoverDot.style.display = 'block';
+        tooltip.style.display = 'block';
+    });
+
+    svg.addEventListener('mouseleave', () => {
+        hoverLine.style.display = 'none';
+        hoverDot.style.display = 'none';
+        tooltip.style.display = 'none';
+    });
+
+    container.appendChild(svg);
+}
+
+
 // ================== UI BINDINGS ==================
 function setupUI(){
   loadCfgToUI();
   loadLogs();
+  loadState();
   logInfo('AI Unified Tool v2.0.0 initialized.');
 
   // Generic tab handler
@@ -754,17 +975,21 @@ function setupUI(){
     if (fromToken === toToken) {
       $('#swapToAmount').value = fromAmount.toFixed(6);
       $('#swapRate').textContent = '1:1 Ratio';
+      renderSwapChart(generateFakePriceData(fromToken, toToken, 60).map(p => ({...p, price: 1})));
       return;
     }
     const rate = exchangeRates[fromToken]?.[toToken];
     if (!rate) {
       $('#swapToAmount').value = 'N/A';
       $('#swapRate').textContent = 'Rate not available';
+      renderSwapChart(generateFakePriceData(fromToken, toToken).map(p => ({...p, price: 0})));
       return;
     }
     const toAmount = fromAmount * rate;
     $('#swapToAmount').value = toAmount.toFixed(6);
     $('#swapRate').textContent = `1 ${fromToken} ≈ ${rate.toFixed(4)} ${toToken}`;
+    const priceData = generateFakePriceData(fromToken, toToken).map(p => ({ ...p, price: p.price * rate }));
+    renderSwapChart(priceData);
   }
 
   ['swapFromAmount', 'swapFromToken', 'swapToToken'].forEach(id => {
@@ -800,8 +1025,26 @@ function setupUI(){
     logOk('AI trade signal received.');
   });
   
+  // Panel Filtering
+  const filterInput = $('#filterPanelsInput');
+  const allPanels = document.querySelectorAll('.grid .card.panel');
+  filterInput.addEventListener('input', (e) => {
+    const searchTerm = e.target.value.toLowerCase().trim();
+    allPanels.forEach(panel => {
+      const panelContent = panel.textContent.toLowerCase();
+      const isVisible = panelContent.includes(searchTerm);
+      panel.style.display = isVisible ? '' : 'none';
+    });
+  });
+
   // Initial call to set swap values
   updateSwap();
+
+  // Set up auto-saving
+  setInterval(() => {
+    saveState();
+    logInfo('Session state auto-saved.');
+  }, 30000);
 }
 
 setupUI();
