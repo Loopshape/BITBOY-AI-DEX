@@ -16,6 +16,11 @@ interface LogEntry {
   message: string;
 }
 
+interface PriceDataPoint {
+    x: Date;
+    y: number;
+}
+
 // --- MOCK DATA & CONFIG ---
 const API_KEY = process.env.API_KEY;
 if (!API_KEY) {
@@ -58,7 +63,11 @@ let state = {
   allocation: 50,
   logs: [] as LogEntry[],
   isGenerating: false,
+  activeTimeframe: '1H',
 };
+
+let marketChartInstance: any = null;
+let historicalData: PriceDataPoint[] = [];
 
 // --- DOM ELEMENT SELECTORS ---
 const DOMElements = {
@@ -73,6 +82,8 @@ const DOMElements = {
   generateBtn: document.getElementById('generate-directive-btn') as HTMLButtonElement,
   directiveOutput: document.getElementById('directive-output')!,
   marketChartCanvas: document.getElementById('marketChart') as HTMLCanvasElement,
+  resetZoomBtn: document.getElementById('reset-zoom-btn') as HTMLButtonElement,
+  timeframeSelector: document.getElementById('timeframe-selector')!,
 };
 
 // --- RENDER FUNCTIONS ---
@@ -124,8 +135,6 @@ const setStatus = (text: string, isError: boolean = false) => {
 
 const handlePersonaSelect = (e: Event) => {
   const target = (e.target as HTMLElement).closest('.persona-card');
-  // FIX: The 'dataset' property is not available on the generic 'Element' type returned by `closest`.
-  // Use an `instanceof` type guard to ensure 'target' is an 'HTMLElement' before accessing 'dataset'.
   if (target instanceof HTMLElement) {
     const id = target.dataset.id;
     if (id) {
@@ -197,25 +206,169 @@ const handleGenerateDirective = async () => {
     }
 };
 
+const handleResetZoom = () => {
+    if (marketChartInstance) {
+        marketChartInstance.resetZoom();
+    }
+};
+
+const generateInitialData = (): PriceDataPoint[] => {
+    const data: PriceDataPoint[] = [];
+    const now = new Date();
+    let currentPrice = 69000;
+    const minutesInDay = 24 * 60; // Generate one day of initial minute-by-minute data
+
+    for (let i = minutesInDay; i > 0; i--) {
+        const timestamp = new Date(now.getTime() - i * 60 * 1000);
+        const fluctuation = (Math.random() - 0.5) * (currentPrice * 0.001); 
+        const drift = (Math.random() - 0.49) * 5; 
+        currentPrice += fluctuation + drift;
+        
+        if (currentPrice < 60000) currentPrice = 60000 + Math.random() * 100;
+        if (currentPrice > 75000) currentPrice = 75000 - Math.random() * 100;
+
+        data.push({ x: timestamp, y: currentPrice });
+    }
+    return data;
+};
+
+const startRealtimeFeed = () => {
+    addLog("Connecting to real-time BTC/USD price feed...");
+    
+    setInterval(() => {
+        const lastPrice = historicalData.length > 0 ? historicalData[historicalData.length - 1].y : 69000;
+        const fluctuation = (Math.random() - 0.5) * (lastPrice * 0.0005);
+        const drift = (Math.random() - 0.5) * 2;
+        let newPrice = lastPrice + fluctuation + drift;
+
+        if (newPrice < 60000) newPrice = 60000 + Math.random() * 50;
+        if (newPrice > 75000) newPrice = 75000 - Math.random() * 50;
+        
+        const newPoint: PriceDataPoint = { x: new Date(), y: newPrice };
+
+        historicalData.push(newPoint);
+        if (historicalData.length > 7 * 24 * 60) { // Keep ~7 days of minute-level data
+            historicalData.shift();
+        }
+
+        if (state.activeTimeframe === '1H' && marketChartInstance) {
+            const chartData = marketChartInstance.data.datasets[0].data;
+            chartData.push(newPoint);
+            
+            if (chartData.length > 300) { 
+                chartData.shift();
+            }
+            
+            marketChartInstance.update('quiet'); 
+        }
+    }, 2000); // New data every 2 seconds
+
+    addLog("Price feed connected. Streaming live data.");
+};
+
+const aggregateData = (data: PriceDataPoint[], hours: number): PriceDataPoint[] => {
+    if (hours <= 0) return data;
+    const aggregated: PriceDataPoint[] = [];
+    const interval = hours * 60 * 60 * 1000;
+    let lastTimestamp = 0;
+    
+    for (const point of data) {
+        if (point.x.getTime() - lastTimestamp > interval) {
+            aggregated.push(point);
+            lastTimestamp = point.x.getTime();
+        }
+    }
+    if (data.length > 0 && (aggregated.length === 0 || aggregated[aggregated.length - 1].x !== data[data.length - 1].x)) {
+         aggregated.push(data[data.length - 1]);
+    }
+
+    return aggregated;
+};
+
+const updateChartView = (timeframe: string) => {
+    if (!marketChartInstance || !historicalData.length) return;
+
+    let newData: PriceDataPoint[];
+    let timeUnit: string;
+    let tooltipFormat: string = 'MMM d, h:mm a';
+    let displayFormats: any = { hour: 'h a', day: 'MMM d' };
+
+    switch (timeframe) {
+        case '4H':
+            newData = aggregateData(historicalData, 4);
+            timeUnit = 'hour';
+            break;
+        case '1D':
+            newData = aggregateData(historicalData, 24);
+            timeUnit = 'day';
+            tooltipFormat = 'MMM d, yyyy';
+            break;
+        case '1W':
+             newData = aggregateData(historicalData, 24 * 7);
+             timeUnit = 'week';
+             tooltipFormat = 'MMM d, yyyy';
+             break;
+        case '1H':
+        default:
+            const liveViewDataPoints = 300;
+            newData = historicalData.slice(-liveViewDataPoints);
+            timeUnit = 'minute';
+            tooltipFormat = 'h:mm:ss a';
+            displayFormats = { minute: 'h:mm a', hour: 'h:mm a' };
+            break;
+    }
+
+    marketChartInstance.data.datasets[0].data = newData;
+    marketChartInstance.options.scales.x.time.unit = timeUnit;
+    marketChartInstance.options.scales.x.time.tooltipFormat = tooltipFormat;
+    marketChartInstance.options.scales.x.time.displayFormats = displayFormats;
+    marketChartInstance.update();
+    marketChartInstance.resetZoom();
+};
+
+const handleTimeframeChange = (e: Event) => {
+    const target = (e.target as HTMLElement).closest('[data-timeframe]');
+    if (target instanceof HTMLElement) {
+        const newTimeframe = target.dataset.timeframe;
+        if (newTimeframe && newTimeframe !== state.activeTimeframe) {
+            state.activeTimeframe = newTimeframe;
+            
+            document.querySelectorAll('#timeframe-selector .timeframe-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            target.classList.add('active');
+            
+            updateChartView(newTimeframe);
+            addLog(`Chart timeframe switched to ${newTimeframe}.`);
+        }
+    }
+};
+
 const initializeChart = () => {
     const ctx = DOMElements.marketChartCanvas.getContext('2d');
     if (!ctx) return;
+
+    if (marketChartInstance) {
+        marketChartInstance.destroy();
+    }
 
     const gradient = ctx.createLinearGradient(0, 0, 0, 350);
     gradient.addColorStop(0, 'rgba(0, 255, 255, 0.3)');
     gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
 
-    new Chart(ctx, {
+    marketChartInstance = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: Array.from({length: 30}, (_, i) => `${i+1}`),
             datasets: [{
                 label: 'BTC Price',
-                data: Array.from({length: 30}, () => 68000 + Math.random() * 2000 - 1000),
+                data: [], // Initially empty, populated by updateChartView
                 borderColor: 'rgba(0, 255, 255, 1)',
                 backgroundColor: gradient,
                 borderWidth: 2,
                 pointRadius: 0,
+                pointHitRadius: 10,
+                pointHoverRadius: 5,
+                pointHoverBackgroundColor: 'rgba(0, 255, 255, 1)',
                 tension: 0.4,
                 fill: true,
             }]
@@ -223,36 +376,109 @@ const initializeChart = () => {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
+            animation: {
+                duration: 0 // Disable for performance with real-time data
+            },
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    enabled: true,
+                    backgroundColor: 'rgba(19, 26, 45, 0.9)',
+                    titleColor: '#00ffff',
+                    bodyColor: '#e0e0e0',
+                    borderColor: '#00ffff44',
+                    borderWidth: 1,
+                    padding: 10,
+                    titleFont: { family: "'Roboto Mono', monospace" },
+                    bodyFont: { family: "'Roboto Mono', monospace" },
+                    callbacks: {
+                        label: function(context: any) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+                            }
+                            return label;
+                        }
+                    }
+                },
+                zoom: {
+                    pan: {
+                        enabled: true,
+                        mode: 'x',
+                        threshold: 5,
+                    },
+                    zoom: {
+                        wheel: { enabled: true },
+                        pinch: { enabled: true },
+                        mode: 'x',
+                    }
+                }
+            },
             scales: {
-                x: { display: false },
+                x: {
+                    type: 'time',
+                    time: {
+                        unit: 'minute',
+                        tooltipFormat: 'h:mm:ss a',
+                        displayFormats: { minute: 'h:mm a', hour: 'h:mm a' }
+                    },
+                    grid: { display: false },
+                    ticks: {
+                        color: '#a0aec0',
+                        font: { family: "'Roboto Mono', monospace" },
+                        maxRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: 10,
+                    }
+                },
                 y: {
                     grid: { color: 'rgba(0, 255, 255, 0.1)' },
-                    ticks: { color: '#a0aec0', font: { family: "'Roboto Mono', monospace" } }
+                    ticks: {
+                        color: '#a0aec0',
+                        font: { family: "'Roboto Mono', monospace" },
+                        callback: function(value: any) {
+                            return '$' + (Number(value) / 1000) + 'k';
+                        }
+                    }
                 }
             }
         }
     });
+    updateChartView(state.activeTimeframe);
 };
 
 // --- INITIALIZATION ---
 
 const init = () => {
+  // Generate initial historical data
+  historicalData = generateInitialData();
+
   // Initial Renders
   renderPersonas();
   renderNews();
   renderAllocation();
   initializeChart();
 
+  // Start the live feed after chart is ready
+  startRealtimeFeed();
+
   // Add initial logs
   addLog("Strategic Synthesis Core Initialized.");
-  addLog("Market data feed connected.");
   addLog("Awaiting user input.");
 
   // Event Listeners
   DOMElements.personaSelector.addEventListener('click', handlePersonaSelect);
   DOMElements.allocationSlider.addEventListener('input', handleAllocationChange);
   DOMElements.generateBtn.addEventListener('click', handleGenerateDirective);
+  DOMElements.resetZoomBtn.addEventListener('click', handleResetZoom);
+  DOMElements.timeframeSelector.addEventListener('click', handleTimeframeChange);
 };
 
 document.addEventListener('DOMContentLoaded', init);
