@@ -99,6 +99,7 @@ let state = {
   isGenerating: false,
   isWalletConnected: false,
   activeTrade: null as ActiveTrade | null,
+  pendingDirective: null as TradeDirective | null,
   currentPrice: 0,
   tradeHistory: [] as TradeHistoryEntry[],
   priceUpdateInterval: null as number | null,
@@ -217,6 +218,34 @@ const renderDirectivePanel = () => {
         `;
         DOMElements.generateBtnContainer.innerHTML = `<button id="close-trade-btn" class="btn btn-sell">FORCE CLOSE TRADE</button>`;
         document.getElementById('close-trade-btn')?.addEventListener('click', () => closeTrade('manual'));
+
+    } else if (state.pendingDirective) {
+        // Render Confirmation Panel
+        const { asset, action, entry, reasoning } = state.pendingDirective;
+        const target = state.manualTakeProfit ?? state.pendingDirective.target;
+        const stopLoss = state.manualStopLoss ?? state.pendingDirective.stopLoss;
+        const allocation = state.allocation;
+
+        DOMElements.directiveOutput.innerHTML = `
+            <div id="trade-confirmation">
+                <h4>CONFIRM TRADE EXECUTION</h4>
+                <p class="reasoning-text">${reasoning}</p>
+                <div class="confirmation-details-grid">
+                    <div class="confirmation-detail-item"><strong>Asset</strong><span>${asset}</span></div>
+                    <div class="confirmation-detail-item"><strong>Action</strong><span class="action-${action.toLowerCase()}">${action}</span></div>
+                    <div class="confirmation-detail-item"><strong>Entry</strong><span>${entry.toFixed(2)}</span></div>
+                    <div class="confirmation-detail-item"><strong>Allocation</strong><span>${allocation}%</span></div>
+                    <div class="confirmation-detail-item"><strong>Take Profit</strong><span>${target.toFixed(2)}</span></div>
+                    <div class="confirmation-detail-item"><strong>Stop Loss</strong><span>${stopLoss.toFixed(2)}</span></div>
+                </div>
+            </div>
+        `;
+        DOMElements.generateBtnContainer.innerHTML = `
+            <button id="confirm-trade-btn" class="btn btn-buy">CONFIRM &amp; EXECUTE</button>
+            <button id="cancel-trade-btn" class="btn btn-sell">CANCEL</button>
+        `;
+        document.getElementById('confirm-trade-btn')?.addEventListener('click', handleConfirmTrade);
+        document.getElementById('cancel-trade-btn')?.addEventListener('click', handleCancelTrade);
 
     } else {
         // Render default view
@@ -378,10 +407,21 @@ const closeTrade = (reason: 'manual' | 'tp' | 'sl') => {
 
     renderTradeHistory();
     renderDirectivePanel();
-    const generateBtn = document.getElementById('generate-directive-btn') as HTMLButtonElement | null;
-    if (generateBtn) generateBtn.disabled = false;
 };
 
+const handleConfirmTrade = () => {
+    if (!state.pendingDirective) return;
+    addLog('Trade directive confirmed by user.');
+    startTrade(state.pendingDirective);
+    state.pendingDirective = null;
+};
+
+const handleCancelTrade = () => {
+    if (!state.pendingDirective) return;
+    addLog('Trade directive cancelled by user.');
+    state.pendingDirective = null;
+    renderDirectivePanel();
+};
 
 const handleGenerateDirective = async () => {
     if (state.isGenerating || state.activeTrade) return;
@@ -420,8 +460,9 @@ const handleGenerateDirective = async () => {
             addLog('Received JSON directive from AI Core.');
             try {
                 const directive = JSON.parse(result.text) as TradeDirective;
-                addLog('Directive parsed successfully.');
-                startTrade(directive);
+                addLog('Directive parsed successfully. Awaiting confirmation.');
+                state.pendingDirective = directive;
+                renderDirectivePanel();
             } catch (parseError) {
                  throw new Error("Failed to parse AI response as valid JSON.");
             }
@@ -455,13 +496,9 @@ const handleGenerateDirective = async () => {
         addLog(errorMessage);
     } finally {
         state.isGenerating = false;
-        // If not in a trade, re-enable the button
-        if (!state.activeTrade) {
-             const finalGenerateBtn = document.getElementById('generate-directive-btn') as HTMLButtonElement | null;
-             if(finalGenerateBtn) {
-                finalGenerateBtn.disabled = false;
-                finalGenerateBtn.textContent = 'GENERATE DIRECTIVE';
-             }
+        // If not in a trade or pending confirmation, re-render the directive panel
+        if (!state.activeTrade && !state.pendingDirective) {
+             renderDirectivePanel();
         }
         setStatus('AWAITING DIRECTIVE');
     }

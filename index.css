@@ -108,123 +108,25 @@ body::before {
 /* AI Synthesis Panel */
 #directive-output { flex-grow: 1; font-size: 1rem; line-height: 1.6; white-space: pre-wrap; overflow-y: auto; padding-right: 10px; }
 #directive-output .placeholder { color: var(--text-secondary); font-style: italic; }
-.btn-group { margin-top: auto; padding-top: 1.5rem; display: flex; }
+.btn-group { margin-top: auto; padding-top: 1.5rem; display: flex; gap: 1rem; }
 .btn { font-family: var(--font-mono); font-weight: 700; font-size: 1rem; padding: 0.75rem 1.5rem; border-radius: 4px; border: none; cursor: pointer; transition: all 0.3s ease; text-transform: uppercase; letter-spacing: 1px; flex-grow: 1; }
 .btn-buy { background-color: var(--glow-cyan); color: var(--bg-dark); box-shadow: 0 0 15px var(--glow-cyan); }
 .btn-buy:hover:not(:disabled) { background-color: #fff; box-shadow: 0 0 25px var(--glow-cyan); }
 .btn:disabled { background-color: #555; color: #999; cursor: not-allowed; box-shadow: none; }
 .btn-sell { background-color: var(--glow-magenta); color: var(--bg-dark); box-shadow: 0 0 15px var(--glow-magenta); }
 .btn-sell:hover:not(:disabled) { background-color: #fff; box-shadow: 0 0 25px var(--glow-magenta); }
+.btn:active:not(:disabled) { transform: scale(0.98); filter: brightness(1.1); }
+
 
 /* Directive Panel */
 #directive-panel { display: flex; flex-direction: column; flex-grow: 1; }
+#directive-placeholder { animation: fadeIn 0.5s ease-out; }
 .cursor { display: inline-block; width: 10px; height: 1.2em; background-color: var(--glow-cyan); animation: blink 1s step-end infinite; margin-left: 2px; vertical-align: middle;}
 .error-message { color: var(--text-red); font-weight: bold; }
 
 /* Persona Selector */
 .persona-selector { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem; }
 .persona-card { text-align: center; padding: 1rem; border: 1px solid var(--border-glow); border-radius: 8px; cursor: pointer; transition: all 0.3s ease; background: rgba(0,0,0,0.2); }
+.persona-card:not(.active):hover { transform: translateY(-4px); box-shadow: 0 4px 20px var(--border-glow); }
 .persona-card.active { background-color: var(--glow-cyan); color: var(--bg-dark); border-color: var(--glow-cyan); box-shadow: 0 0 15px var(--glow-cyan); }
-.persona-card.active .persona-avatar, .persona-card.active .persona-name { color: var(--bg-dark) !important; text-shadow: none;}
-.persona-avatar { font-size: 2rem; margin-bottom: 0.5rem; color: var(--glow-cyan); text-shadow: 0 0 5px var(--glow-cyan); }
-.persona-name { font-weight: 700; }
-
-/* Allocation Slider */
-.allocation-container { padding: 0 1rem; }
-.form-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); margin-bottom: 1rem; display: block; }
-.form-range { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: var(--border-glow); outline: none; border-radius: 2px; }
-.form-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%; background: var(--glow-cyan); cursor: pointer; border: 2px solid var(--bg-dark); box-shadow: 0 0 10px var(--glow-cyan); }
-.form-range::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: var(--glow-cyan); cursor: pointer; border: 2px solid var(--bg-dark); box-shadow: 0 0 10px var(--glow-cyan); }
-
-.manual-overrides-container {
-    display: flex;
-    gap: 1rem;
-    padding: 1.5rem 1rem 0 1rem;
-}
-
-.manual-overrides-container.hidden {
-    display: none;
-}
-
-.override-input-group {
-    flex: 1;
-}
-
-.override-input-group .form-label {
-    margin-bottom: 0.5rem;
-}
-
-.override-input {
-    width: 100%;
-    background-color: rgba(0,0,0,0.4);
-    border: 1px solid var(--border-glow);
-    color: var(--text-primary);
-    padding: 0.5rem;
-    border-radius: 4px;
-    font-family: var(--font-mono);
-    font-size: 0.9rem;
-}
-
-.override-input::placeholder {
-    color: var(--text-secondary);
-    opacity: 0.6;
-}
-
-.override-input:focus {
-    outline: none;
-    border-color: var(--glow-cyan);
-    box-shadow: 0 0 10px var(--glow-cyan);
-}
-
-
-/* AI Operations Panel */
-#ai-operations-container { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; height: 100%; }
-.ai-status-box { background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 4px; border: 1px solid var(--border-glow); margin-bottom: 1rem; }
-.ai-status-text { font-weight: 700; text-align: center; color: var(--glow-cyan); text-shadow: 0 0 5px var(--glow-cyan); }
-.ai-log-title { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 1px; }
-.ai-log, .trade-history { flex-shrink: 1; height: 100px; overflow-y: auto; border: 1px solid var(--border-glow); padding: 0.75rem; border-radius: 4px; background: rgba(0,0,0,0.2); font-size: 0.85rem; margin-bottom: 1rem;}
-.log-item, .trade-item { margin-bottom: 0.5rem; }
-.log-item .timestamp { color: var(--text-secondary); margin-right: 0.5rem; }
-
-/* Wallet Connect Toggle */
-.wallet-toggle-container { display: flex; align-items: center; gap: 0.75rem; }
-.wallet-toggle-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); }
-.wallet-toggle { position: relative; display: inline-block; width: 50px; height: 24px; }
-.wallet-toggle input { opacity: 0; width: 0; height: 0; }
-.wallet-toggle .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 24px; border: 1px solid var(--text-secondary); }
-.wallet-toggle .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 3px; background-color: var(--text-secondary); transition: .4s; border-radius: 50%; }
-.wallet-toggle input:checked + .slider { background-color: var(--glow-cyan); box-shadow: 0 0 10px var(--glow-cyan); border-color: var(--glow-cyan); }
-.wallet-toggle input:checked + .slider:before { transform: translateX(26px); background-color: var(--bg-dark); }
-
-/* Live Trade Monitor */
-#live-trade-monitor { animation: fadeIn 0.5s ease-out; }
-.trade-monitor-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-.trade-monitor-asset { font-size: 1.5rem; font-weight: bold; }
-.trade-monitor-direction { padding: 0.25rem 0.75rem; border-radius: 4px; font-weight: bold; }
-.direction-long { background-color: var(--text-green); color: var(--bg-dark); }
-.direction-short { background-color: var(--text-red); color: var(--bg-dark); }
-.pnl-display { text-align: center; margin: 1rem 0; }
-.pnl-value { font-size: 2.5rem; font-weight: bold; transition: color 0.5s ease; }
-.pnl-percent { font-size: 1.2rem; color: var(--text-secondary); }
-.trade-details-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; font-size: 0.9rem; }
-.trade-detail-item { background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 4px;}
-.trade-detail-item strong { color: var(--text-secondary); display: block; margin-bottom: 0.25rem; font-size: 0.8rem; }
-.trade-progress-bar { margin-top: 1.5rem; }
-.progress-label { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 0.5rem; }
-.progress-track { width: 100%; height: 8px; background-color: rgba(0,0,0,0.4); border-radius: 4px; overflow: hidden; }
-.progress-fill { height: 100%; width: 50%; transition: width 0.5s ease; }
-#tp-progress .progress-fill { background-color: var(--text-green); }
-#sl-progress .progress-fill { background-color: var(--text-red); }
-
-/* Trade History */
-.trade-history .placeholder { color: var(--text-secondary); font-style: italic; }
-.trade-item { display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.5rem; border-bottom: 1px dashed var(--border-glow); }
-.trade-item:last-child { border-bottom: none; }
-.trade-item-pnl { font-weight: bold; }
-
-/* Animations */
-@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes scanline { 0% { background-position: 0 0; } 100% { background-position: 0 5rem; } }
-@keyframes pulse-green { 0% { box-shadow: 0 0 5px var(--text-green); } 50% { box-shadow: 0 0 15px var(--text-green); } 100% { box-shadow: 0 0 5px var(--text-green); } }
-@keyframes pulse-red { 0% { box-shadow: 0 0 5px var(--text-red); } 50% { box-shadow: 0 0 15px var(--text-red); } 100% { box-shadow: 0 0 5px var(--text-red); } }
-@keyframes blink { 50% { background-color: transparent; } }
+.persona-card.active .persona-avatar
