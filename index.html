@@ -7,555 +7,112 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="index.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        :root {
-            --bg-dark: #0a0e17;
-            --surface-dark: #131a2d;
-            --border-glow: #00ffff44;
-            --glow-cyan: #00ffff;
-            --glow-magenta: #ff00ff;
-            --text-primary: #e0e0e0;
-            --text-secondary: #a0aec0;
-            --text-green: #00ff9d;
-            --text-red: #ff4d6d;
-            --font-mono: 'Roboto Mono', monospace;
-        }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: var(--font-mono);
-            background-color: var(--bg-dark);
-            color: var(--text-primary);
-            height: 100vh;
-            padding: 2rem;
-            display: grid;
-            place-items: center;
-            overflow: hidden;
-            position: relative;
-        }
-
-        body::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-image: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.03) 1px, transparent 1px, transparent 4px);
-            animation: scanline 10s linear infinite;
-            pointer-events: none;
-            z-index: -1;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 1400px;
-            height: calc(100vh - 4rem);
-            max-height: 1000px;
-            background: rgba(19, 26, 45, 0.85);
-            border: 1px solid var(--border-glow);
-            border-radius: 12px;
-            backdrop-filter: blur(10px);
-            box-shadow: 0 0 30px var(--border-glow);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            animation: fadeIn 1s ease-out;
-        }
-
-        .header {
-            padding: 1rem 1.5rem;
-            border-bottom: 1px solid var(--border-glow);
-            font-size: 1.2rem;
-            font-weight: 700;
-            color: var(--glow-cyan);
-            text-shadow: 0 0 5px var(--glow-cyan);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-shrink: 0;
-        }
-
-        .status-indicator {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.9rem;
-        }
-
-        .status-light {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background-color: var(--text-green);
-            box-shadow: 0 0 10px var(--text-green);
-            animation: pulse-green 1.5s infinite;
-        }
-        
-        .status-light.error {
-            background-color: var(--text-red);
-            box-shadow: 0 0 10px var(--text-red);
-            animation: pulse-red 1.5s infinite;
-        }
-
-        .main-content {
-            display: flex;
-            flex-direction: column;
-            gap: 1px;
-            background-color: var(--border-glow);
-            flex-grow: 1;
-            overflow-y: auto;
-        }
-
-        .panel {
-            background-color: var(--surface-dark);
-            padding: 1.5rem;
-            flex-shrink: 0;
-        }
-        
-        #market-chart-panel {
-            min-height: 400px;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .panel-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-        }
-
-        .panel-title {
-            font-weight: 700;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            font-size: 0.9rem;
-            border-bottom: 1px solid var(--border-glow);
-            padding-bottom: 0.5rem;
-            width: 100%;
-        }
-
-        .panel-header .panel-title {
-            border-bottom: none;
-            padding-bottom: 0;
-            width: auto;
-        }
-
-        .timeframe-selector {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .timeframe-btn {
-            background-color: transparent;
-            border: 1px solid var(--text-secondary);
-            color: var(--text-secondary);
-            padding: 0.25rem 0.75rem;
-            font-family: var(--font-mono);
-            font-size: 0.8rem;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        
-        .timeframe-btn.active, .timeframe-btn:hover {
-            background-color: var(--glow-cyan);
-            color: var(--bg-dark);
-            border-color: var(--glow-cyan);
-            box-shadow: 0 0 10px var(--glow-cyan);
-        }
-
-        #chart-container {
-            position: relative;
-            flex-grow: 1;
-        }
-
-        .intel-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-        
-        .data-point h3 { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.5rem; }
-        .data-point p { font-size: 1.5rem; font-weight: 700; }
-        .positive { color: var(--text-green); }
-        .negative { color: var(--text-red); }
-
-        .news-feed h3 { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem; }
-        .news-item { font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--text-primary); }
-        
-        #ai-synthesis-panel {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        #directive-output {
-            flex-grow: 1;
-            font-size: 1rem;
-            line-height: 2;
-            white-space: pre-wrap;
-            min-height: 200px;
-        }
-        
-        #directive-output .error-message {
-            color: var(--text-red);
-        }
-
-        .cursor { display: inline-block; width: 10px; height: 1em; background-color: var(--glow-magenta); animation: blink 1s infinite; vertical-align: middle; }
-        .placeholder { color: var(--text-secondary); opacity: 0.6; }
-
-        .footer {
-            padding: 1rem 1.5rem;
-            border-top: 1px solid var(--border-glow);
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            flex-shrink: 0;
-        }
-
-        #synthesize-btn {
-            background-color: transparent;
-            border: 1px solid var(--glow-magenta);
-            color: var(--glow-magenta);
-            padding: 0.75rem 1.5rem;
-            font-family: var(--font-mono);
-            font-size: 1rem;
-            font-weight: 700;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 0 10px var(--glow-magenta) inset;
-        }
-
-        #synthesize-btn:disabled { opacity: 0.4; cursor: wait; }
-        #synthesize-btn.is-synthesizing:disabled { animation: pulse-magenta 2s infinite; }
-        #synthesize-btn:not(:disabled):hover { background-color: var(--glow-magenta); color: var(--bg-dark); box-shadow: 0 0 20px var(--glow-magenta); }
-        
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: var(--surface-dark); }
-        ::-webkit-scrollbar-thumb { background: var(--glow-magenta); border-radius: 4px; }
-        
-        @keyframes fadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
-        @keyframes blink { 50% { opacity: 0; } }
-        @keyframes pulse-green { 0%, 100% { box-shadow: 0 0 5px var(--text-green); } 50% { box-shadow: 0 0 15px var(--text-green); } }
-        @keyframes pulse-red { 0%, 100% { box-shadow: 0 0 5px var(--text-red); } 50% { box-shadow: 0 0 15px var(--text-red); } }
-        @keyframes pulse-magenta { 0%, 100% { box-shadow: 0 0 5px var(--glow-magenta) inset; } 50% { box-shadow: 0 0 15px var(--glow-magenta) inset; } }
-        @keyframes scanline { 0% { transform: translateY(-10%); } 100% { transform: translateY(10%); } }
-        
-    </style>
+<script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.19.0"
+  }
+}
+</script>
 </head>
 <body>
-
     <div class="container">
         <header class="header">
             <span>AI-BITBOY-DEX :: STRATEGIC SYNTHESIS CORE</span>
             <div class="status-indicator">
                 <div id="status-light" class="status-light"></div>
-                <span id="status-text">DATASTREAM ACTIVE</span>
+                <span id="status-text">SYSTEM ONLINE</span>
             </div>
         </header>
 
         <main class="main-content">
-            <div id="market-intel-panel" class="panel">
-                <h2 class="panel-title">MARKET INTELLIGENCE FEED</h2>
-                <div class="intel-grid">
-                    <div class="data-point">
-                        <h3>BTC/USD PRICE</h3>
-                        <p id="btc-price">$68,521.44</p>
-                    </div>
-                    <div class="data-point">
-                        <h3>24H CHANGE</h3>
-                        <p id="btc-change" class="positive">+2.15%</p>
-                    </div>
-                    <div class="data-point">
-                        <h3>24H VOLUME</h3>
-                        <p id="btc-volume">$45.2B</p>
-                    </div>
-                    <div class="data-point">
-                        <h3>SENTIMENT INDEX</h3>
-                        <p id="sentiment" class="positive">72 (Greed)</p>
-                    </div>
-                </div>
-                <div class="news-feed">
-                    <h3>REAL-TIME HEADLINES</h3>
-                    <p id="news-item" class="news-item">FED CHAIR HINTS AT STABLE RATES, BOOSTING MARKET CONFIDENCE</p>
-                </div>
-            </div>
-
             <div id="market-chart-panel" class="panel">
                 <div class="panel-header">
-                    <h2 class="panel-title">MARKET DATA VISUALIZATION</h2>
+                    <h2 class="panel-title"><i class="fas fa-chart-bar"></i>MARKET ANALYSIS :: BTC/USD</h2>
                     <div class="timeframe-selector">
-                        <button class="timeframe-btn active" data-timeframe="1H">1H</button>
-                        <button class="timeframe-btn" data-timeframe="24H">24H</button>
-                        <button class="timeframe-btn" data-timeframe="7D">7D</button>
+                        <button class="timeframe-btn active">1H</button>
+                        <button class="timeframe-btn">4H</button>
+                        <button class="timeframe-btn">1D</button>
+                        <button class="timeframe-btn">1W</button>
                     </div>
                 </div>
                 <div id="chart-container">
-                    <canvas id="market-chart"></canvas>
+                    <canvas id="marketChart"></canvas>
                 </div>
             </div>
 
-            <div id="ai-synthesis-panel" class="panel">
-                <h2 class="panel-title">AI SYNTHESIS CORE</h2>
-                <div id="directive-output" class="placeholder">Awaiting synthesis command...</div>
+            <div class="panel-grid">
+                <!-- LEFT COLUMN -->
+                <div class="panel-column">
+                    <div id="market-intel" class="panel">
+                        <h2 class="panel-title"><i class="fas fa-satellite-dish"></i>MARKET INTEL</h2>
+                        <div class="intel-grid">
+                            <div class="data-point">
+                                <h3>Market Sentiment</h3>
+                                <p class="positive">GREED (78)</p>
+                            </div>
+                            <div class="data-point">
+                                <h3>24H Volume</h3>
+                                <p>$45.2B</p>
+                            </div>
+                            <div class="data-point">
+                                <h3>Dominance</h3>
+                                <p>BTC 51.7%</p>
+                            </div>
+                             <div class="data-point">
+                                <h3>Volatility</h3>
+                                <p class="negative">HIGH</p>
+                            </div>
+                        </div>
+                         <h3 class="news-title">LATEST MARKET INTEL</h3>
+                        <div id="news-feed" class="news-feed">
+                            <!-- News items will be injected here -->
+                        </div>
+                    </div>
+
+                    <div id="ai-synthesis" class="panel">
+                        <h2 class="panel-title"><i class="fas fa-brain"></i>AI PERSONA &amp; CAPITAL ALLOCATION</h2>
+                         <div id="persona-selector" class="persona-selector">
+                            <!-- Personas will be injected here -->
+                        </div>
+                        <div class="allocation-container">
+                            <label for="allocation-slider" class="form-label">ALLOCATION: <span id="allocation-value">50%</span></label>
+                            <input type="range" id="allocation-slider" min="0" max="100" value="50" class="form-range">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RIGHT COLUMN -->
+                <div class="panel-column">
+                    <div id="ai-operations" class="panel">
+                        <h2 class="panel-title"><i class="fas fa-cogs"></i>AI OPERATIONS</h2>
+                        <div id="ai-operations-container">
+                             <div class="ai-status-box">
+                                <p id="ai-status-text" class="ai-status-text">AWAITING DIRECTIVE</p>
+                            </div>
+                             <h3 class="ai-log-title">OPERATIONS LOG</h3>
+                            <div id="ai-log" class="ai-log">
+                                <!-- Log items will be injected here -->
+                            </div>
+                        </div>
+                    </div>
+
+                     <div id="directive-panel" class="panel">
+                        <h2 class="panel-title"><i class="fas fa-file-alt"></i>TRADE DIRECTIVE</h2>
+                        <div id="directive-output">
+                           <span class="placeholder">Select a persona and generate a directive...</span>
+                        </div>
+                         <div class="btn-group">
+                           <button id="generate-directive-btn" class="btn btn-buy">GENERATE DIRECTIVE</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </main>
-
-        <footer class="footer">
-            <button id="synthesize-btn">SYNTHESIZE TRADE DIRECTIVE</button>
-        </footer>
     </div>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const btcPriceEl = document.getElementById('btc-price');
-            const btcChangeEl = document.getElementById('btc-change');
-            const btcVolumeEl = document.getElementById('btc-volume');
-            const sentimentEl = document.getElementById('sentiment');
-            const newsItemEl = document.getElementById('news-item');
-            const directiveOutput = document.getElementById('directive-output');
-            const synthesizeBtn = document.getElementById('synthesize-btn');
-            const statusLight = document.getElementById('status-light');
-            const statusText = document.getElementById('status-text');
-            const chartCanvas = document.getElementById('market-chart');
-            const timeframeButtons = document.querySelectorAll('.timeframe-btn');
-
-            let isDataStreamActive = true;
-            let marketChart;
-            let activeTimeframe = '1H';
-            let historicalData = { '1H': null, '24H': null, '7D': null };
-
-            const newsHeadlines = [
-                { text: "FED CHAIR HINTS AT STABLE RATES, BOOSTING MARKET CONFIDENCE", sentiment: 'positive' },
-                { text: "MAJOR EXCHANGE REPORTS SECURITY BREACH, MARKET JITTERS EVIDENT", sentiment: 'negative' },
-                { text: "ETF INFLOWS REACH RECORD HIGHS, INSTITUTIONAL ADOPTION SURGES", sentiment: 'positive' },
-                { text: "REGULATORY UNCERTAINTY IN ASIA CAUSES REGIONAL SELL-OFF", sentiment: 'negative' },
-                { text: "BITCOIN HASH RATE HITS NEW ALL-TIME HIGH, NETWORK SECURE", sentiment: 'positive' },
-                { text: "STABLECOIN ISSUER FACES SCRUTINY, LIQUIDITY CONCERNS RISE", sentiment: 'negative' },
-                { text: "ANALYSTS PREDICT VOLATILITY SQUEEZE, RANGE-BOUND TRADING EXPECTED", sentiment: 'neutral' }
-            ];
-
-            let marketState = {
-                price: 68521.44,
-                change: 2.15,
-                volume: 45.2,
-                sentiment: 72,
-                sentimentText: 'Greed',
-                news: newsHeadlines[0].text
-            };
-
-            const typeWriter = async (element, text) => {
-                element.innerHTML = '';
-                let content = '';
-                for (let i = 0; i < text.length; i++) {
-                    content += text.charAt(i);
-                    element.innerHTML = content + '<span class="cursor"></span>';
-                    await new Promise(resolve => setTimeout(resolve, 15));
-                }
-                element.innerHTML = content;
-            };
-
-            const generateChartData = (timeframe, basePrice) => {
-                let points, unit;
-                switch (timeframe) {
-                    case '1H': points = 60; unit = 'minute'; break;
-                    case '24H': points = 24; unit = 'hour'; break;
-                    case '7D': points = 7; unit = 'day'; break;
-                    default: points = 60; unit = 'minute';
-                }
-
-                const labels = [];
-                const prices = [];
-                const volumes = [];
-                let currentPrice = basePrice * (1 - (Math.random() * 0.02)); // Start slightly lower
-                const now = Date.now();
-
-                for (let i = points - 1; i >= 0; i--) {
-                    const date = new Date(now - i * (unit === 'minute' ? 60000 : unit === 'hour' ? 3600000 : 86400000));
-                    if (timeframe === '1H' || timeframe === '24H') labels.push(date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-                    else if (timeframe === '7D') labels.push(date.toLocaleDateString([], { month: 'short', day: 'numeric' }));
-
-                    const priceFluctuation = (Math.random() - 0.48) * (timeframe === '1H' ? 0.001 : 0.01);
-                    currentPrice *= (1 + priceFluctuation);
-                    prices.push(currentPrice);
-
-                    const volume = Math.random() * 1000 + 500 + (Math.abs(priceFluctuation) * 100000);
-                    volumes.push(volume);
-                }
-                return { labels, prices, volumes };
-            };
-
-            const initChart = () => {
-                historicalData['1H'] = generateChartData('1H', marketState.price);
-                historicalData['24H'] = generateChartData('24H', marketState.price);
-                historicalData['7D'] = generateChartData('7D', marketState.price);
-                
-                const ctx = chartCanvas.getContext('2d');
-                const priceGradient = ctx.createLinearGradient(0, 0, 0, 400);
-                priceGradient.addColorStop(0, 'rgba(0, 255, 255, 0.4)');
-                priceGradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
-
-                marketChart = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: historicalData[activeTimeframe].labels,
-                        datasets: [
-                            {
-                                type: 'line', label: 'BTC Price', data: historicalData[activeTimeframe].prices,
-                                borderColor: 'var(--glow-cyan)', backgroundColor: priceGradient,
-                                fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 6, pointBackgroundColor: 'var(--glow-cyan)',
-                                yAxisID: 'yPrice',
-                            },
-                            {
-                                type: 'bar', label: 'Volume', data: historicalData[activeTimeframe].volumes,
-                                backgroundColor: 'rgba(255, 0, 255, 0.25)', borderColor: 'var(--glow-magenta)', borderWidth: 1,
-                                yAxisID: 'yVolume',
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        plugins: { legend: { display: false }, tooltip: {
-                            mode: 'index', intersect: false, backgroundColor: 'rgba(10, 14, 23, 0.9)',
-                            titleFont: { family: 'var(--font-mono)' }, bodyFont: { family: 'var(--font-mono)' },
-                            titleColor: 'var(--glow-cyan)', bodyColor: 'var(--text-primary)',
-                            borderColor: 'var(--border-glow)', borderWidth: 1, padding: 10,
-                            callbacks: {
-                                label: (c) => c.dataset.yAxisID === 'yPrice' 
-                                    ? `${c.dataset.label}: ${c.parsed.y.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`
-                                    : `${c.dataset.label}: ${c.parsed.y.toFixed(2)}`
-                            }
-                        }},
-                        interaction: { mode: 'index', intersect: false },
-                        scales: {
-                            x: { ticks: { color: 'var(--text-secondary)', maxRotation: 0, autoSkip: true, maxTicksLimit: 10 }, grid: { color: 'rgba(0, 255, 255, 0.1)' } },
-                            yPrice: {
-                                type: 'linear', position: 'left',
-                                ticks: { color: 'var(--text-secondary)', callback: value => `$${(value/1000).toFixed(0)}k` },
-                                grid: { color: 'rgba(0, 255, 255, 0.1)' }
-                            },
-                            yVolume: { type: 'linear', position: 'right', ticks: { display: false }, grid: { drawOnChartArea: false } }
-                        }
-                    }
-                });
-            };
-            
-            timeframeButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    activeTimeframe = button.dataset.timeframe;
-                    timeframeButtons.forEach(btn => btn.classList.remove('active'));
-                    button.classList.add('active');
-
-                    const newData = historicalData[activeTimeframe];
-                    marketChart.data.labels = newData.labels;
-                    marketChart.data.datasets[0].data = newData.prices;
-                    marketChart.data.datasets[1].data = newData.volumes;
-                    marketChart.update();
-                });
-            });
-
-            const updateMarketData = () => {
-                if (isDataStreamActive && Math.random() < 0.05) {
-                    isDataStreamActive = false;
-                    statusLight.classList.add('error'); statusText.textContent = "DATASTREAM OFFLINE";
-                    synthesizeBtn.disabled = true; synthesizeBtn.textContent = "DATA OFFLINE";
-                    synthesizeBtn.classList.remove('is-synthesizing');
-                } else if (!isDataStreamActive && Math.random() < 0.3) {
-                    isDataStreamActive = true;
-                    statusLight.classList.remove('error'); statusText.textContent = "DATASTREAM ACTIVE";
-                    synthesizeBtn.disabled = false; synthesizeBtn.textContent = "SYNTHESIZE TRADE DIRECTIVE";
-                }
-
-                if (!isDataStreamActive) return;
-
-                const price_fluctuation = (Math.random() - 0.5) * 0.005; // +/- 0.5%
-                marketState.price *= (1 + price_fluctuation);
-                marketState.change += (Math.random() - 0.5) * 0.1;
-                marketState.volume += (Math.random() - 0.5) * 0.2;
-                marketState.sentiment = Math.max(10, Math.min(90, marketState.sentiment + Math.floor((Math.random() - 0.5) * 4)));
-                
-                if (Math.random() < 0.1) {
-                    const randomNews = newsHeadlines[Math.floor(Math.random() * newsHeadlines.length)];
-                    marketState.news = randomNews.text;
-                    if (randomNews.sentiment === 'positive') marketState.sentiment = Math.min(90, marketState.sentiment + 5);
-                    if (randomNews.sentiment === 'negative') marketState.sentiment = Math.max(10, marketState.sentiment - 5);
-                }
-                
-                marketState.sentimentText = marketState.sentiment > 75 ? 'Extreme Greed' : marketState.sentiment > 55 ? 'Greed' : marketState.sentiment < 25 ? 'Extreme Fear' : marketState.sentiment < 45 ? 'Fear' : 'Neutral';
-
-                btcPriceEl.textContent = `$${marketState.price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-                btcChangeEl.textContent = `${marketState.change >= 0 ? '+' : ''}${marketState.change.toFixed(2)}%`;
-                btcChangeEl.className = marketState.change >= 0 ? 'positive' : 'negative';
-                btcVolumeEl.textContent = `$${marketState.volume.toFixed(1)}B`;
-                sentimentEl.textContent = `${marketState.sentiment} (${marketState.sentimentText})`;
-                sentimentEl.className = marketState.sentiment >= 50 ? 'positive' : 'negative';
-                newsItemEl.textContent = marketState.news;
-                
-                if (marketChart && activeTimeframe === '1H') {
-                    const newLabel = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    marketChart.data.labels.push(newLabel);
-                    marketChart.data.datasets[0].data.push(marketState.price);
-                    marketChart.data.datasets[1].data.push(Math.random() * 1000 + 500 + Math.abs(price_fluctuation * 200000));
-                    
-                    marketChart.data.labels.shift();
-                    marketChart.data.datasets[0].data.shift();
-                    marketChart.data.datasets[1].data.shift();
-                    
-                    marketChart.update('none');
-                }
-            };
-
-            const generateDirective = () => {
-                if (Math.random() < 0.3) throw new Error("AI core synchronization failed. Unable to compute strategy.");
-                const price = marketState.price;
-                let directive = `TRADE DIRECTIVE: ${Date.now()}\nASSET: BTC/USD\nSTATUS: AI SYNTHESIS COMPLETE\n\n// ANALYSIS:\nCurrent Price: $${price.toFixed(2)}\n24h Momentum: ${marketState.change.toFixed(2)}%\nMarket Sentiment: ${marketState.sentiment} (${marketState.sentimentText})\nPrimary Intel: ${marketState.news}\n\n`;
-                if (marketState.sentiment > 65 && marketState.change > 1) {
-                    directive += `// STRATEGIC CONCLUSION:\nHigh positive sentiment coupled with strong upward momentum indicates a continuation of the bullish trend. Institutional inflows suggest robust support levels.\n\n// ACTIONABLE DIRECTIVE:\nEXECUTE LONG POSITION.\n- Entry Zone: $${(price * 0.995).toFixed(2)} - $${price.toFixed(2)}\n- Take-Profit 1: $${(price * 1.03).toFixed(2)}\n- Stop-Loss: $${(price * 0.98).toFixed(2)}\n- Confidence Score: 88%`;
-                } else if (marketState.sentiment < 35 && marketState.change < -1) {
-                     directive += `// STRATEGIC CONCLUSION:\nDominant fear sentiment and negative momentum, amplified by regulatory concerns, suggest further downside potential. Liquidity appears thin at current levels.\n\n// ACTIONABLE DIRECTIVE:\nEXECUTE SHORT POSITION.\n- Entry Zone: $${price.toFixed(2)} - $${(price * 1.005).toFixed(2)}\n- Take-Profit 1: $${(price * 0.97).toFixed(2)}\n- Stop-Loss: $${(price * 1.02).toFixed(2)}\n- Confidence Score: 85%`;
-                } else {
-                    directive += `// STRATEGIC CONCLUSION:\nMixed signals present. Market is in a consolidation phase with conflicting sentiment and price action. Volatility is expected to remain low in the short term.\n\n// ACTIONABLE DIRECTIVE:\nMAINTAIN NEUTRAL STANCE.\n- Strategy: Range trading.\n- Support Level: $${(price * 0.98).toFixed(2)}\n- Resistance Level: $${(price * 1.02).toFixed(2)}\n- Action: Monitor for a breakout above resistance or a breakdown below support before committing capital.\n- Confidence Score: 60%`;
-                }
-                return directive.trim();
-            };
-
-            synthesizeBtn.addEventListener('click', async () => {
-                synthesizeBtn.disabled = true;
-                synthesizeBtn.textContent = "SYNTHESIZING...";
-                synthesizeBtn.classList.add('is-synthesizing');
-                directiveOutput.classList.remove('placeholder');
-                directiveOutput.innerHTML = '';
-                try {
-                    directiveOutput.innerHTML = '<span class="placeholder">Parsing market vectors...</span>';
-                    await new Promise(r => setTimeout(r, 1000));
-                    directiveOutput.innerHTML = '<span class="placeholder">Correlating sentiment data...</span>';
-                    await new Promise(r => setTimeout(r, 1000));
-                    directiveOutput.innerHTML = '<span class="placeholder">Generating optimal strategy...</span>';
-                    await new Promise(r => setTimeout(r, 1000));
-                    
-                    const directiveText = generateDirective();
-                    await typeWriter(directiveOutput, directiveText);
-                } catch (error) {
-                    console.error("Synthesis failed:", error);
-                    const errorMessage = `// SYNTHESIS FAILED\n\nERROR: ${error.message}\n\nACTION: Retry synthesis protocol.`;
-                    directiveOutput.innerHTML = `<div class="error-message">${errorMessage}</div>`;
-                } finally {
-                    synthesizeBtn.disabled = false;
-                    synthesizeBtn.textContent = "RE-SYNTHESIZE DIRECTIVE";
-                    synthesizeBtn.classList.remove('is-synthesizing');
-                }
-            });
-
-            initChart();
-            setInterval(updateMarketData, 2000);
-        });
-    </script>
-
+    <script type="module" src="index.tsx"></script>
 </body>
 </html>
