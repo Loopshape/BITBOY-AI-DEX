@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 
 // FIX: Declare Chart since it is likely loaded from a script tag and not imported.
 declare var Chart: any;
@@ -16,10 +16,29 @@ interface LogEntry {
   message: string;
 }
 
-interface PriceDataPoint {
-    x: Date;
-    y: number;
+interface TradeDirective {
+    asset: string;
+    action: "LONG" | "SHORT";
+    entry: number;
+    target: number;
+    stopLoss: number;
+    reasoning: string;
 }
+
+interface ActiveTrade extends TradeDirective {
+    allocation: number;
+}
+
+interface TradeHistoryEntry {
+    asset: string;
+    action: "LONG" | "SHORT";
+    entryPrice: number;
+    closePrice: number;
+    pnl: number;
+    pnlPercent: number;
+    timestamp: string;
+}
+
 
 // --- MOCK DATA & CONFIG ---
 const API_KEY = process.env.API_KEY;
@@ -28,24 +47,38 @@ if (!API_KEY) {
 }
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
+const JSON_SCHEMA = {
+    type: Type.OBJECT,
+    properties: {
+        asset: { type: Type.STRING, description: "The asset pair, e.g., 'BTC/USD'" },
+        action: { type: Type.STRING, enum: ["LONG", "SHORT"], description: "The trade action" },
+        entry: { type: Type.NUMBER, description: "The suggested entry price" },
+        target: { type: Type.NUMBER, description: "The take-profit target price" },
+        stopLoss: { type: Type.NUMBER, description: "The stop-loss price" },
+        reasoning: { type: Type.STRING, description: "A brief justification for the trade" },
+    },
+    required: ["asset", "action", "entry", "target", "stopLoss", "reasoning"],
+};
+
+
 const PERSONAS: Persona[] = [
   {
     id: 'scalper',
     name: 'Scalper',
     icon: 'fa-solid fa-bolt',
-    systemInstruction: 'You are an aggressive, high-frequency crypto trading AI. Provide extremely short-term, high-probability trade directives for scalping. Focus on immediate price action, order book depth, and micro-trends. Be concise and direct. Output should be a single, actionable trade with entry, target, and stop-loss.',
+    systemInstruction: 'You are an aggressive, high-frequency crypto trading AI. Provide extremely short-term, high-probability trade directives for scalping. Focus on immediate price action. YOU MUST ONLY output a valid JSON object matching the provided schema.',
   },
   {
     id: 'swing',
     name: 'Swing Trader',
     icon: 'fa-solid fa-chart-line',
-    systemInstruction: 'You are a crypto swing trading AI. Your analysis covers a multi-day to multi-week timeframe. Identify potential swing highs and lows based on technical indicators like MACD, RSI, and moving averages. Provide a clear entry point, target, and stop-loss. Explain your reasoning briefly.',
+    systemInstruction: 'You are a crypto swing trading AI. Your analysis covers a multi-day to multi-week timeframe. Identify potential swing highs and lows based on technical indicators. YOU MUST ONLY output a valid JSON object matching the provided schema.',
   },
   {
     id: 'investor',
     name: 'Investor',
     icon: 'fa-solid fa-gem',
-    systemInstruction: 'You are a long-term crypto investment AI. Focus on fundamental analysis, project viability, tokenomics, and long-term market trends. Identify undervalued assets with strong growth potential. Your directives should be for holding positions for months or years. Justify your picks with solid reasoning.',
+    systemInstruction: 'You are a long-term crypto investment AI. Focus on fundamental analysis, project viability, and long-term market trends. For the purpose of this simulation, provide a tradeable directive. YOU MUST ONLY output a valid JSON object matching the provided schema.',
   },
 ];
 
@@ -58,16 +91,20 @@ const MOCK_NEWS = [
 ];
 
 // --- STATE MANAGEMENT ---
+let marketChart: any = null; // Hold chart instance
 let state = {
   activePersonaId: 'swing',
   allocation: 50,
   logs: [] as LogEntry[],
   isGenerating: false,
-  activeTimeframe: '1H',
+  isWalletConnected: false,
+  activeTrade: null as ActiveTrade | null,
+  currentPrice: 0,
+  tradeHistory: [] as TradeHistoryEntry[],
+  priceUpdateInterval: null as number | null,
+  manualTakeProfit: null as number | null,
+  manualStopLoss: null as number | null,
 };
-
-let marketChartInstance: any = null;
-let historicalData: PriceDataPoint[] = [];
 
 // --- DOM ELEMENT SELECTORS ---
 const DOMElements = {
@@ -79,11 +116,17 @@ const DOMElements = {
   newsFeed: document.getElementById('news-feed')!,
   aiLog: document.getElementById('ai-log')!,
   aiStatusText: document.getElementById('ai-status-text')!,
-  generateBtn: document.getElementById('generate-directive-btn') as HTMLButtonElement,
+  generateBtnContainer: document.querySelector('.btn-group') as HTMLElement,
+  directivePanel: document.getElementById('directive-panel')!,
   directiveOutput: document.getElementById('directive-output')!,
   marketChartCanvas: document.getElementById('marketChart') as HTMLCanvasElement,
-  resetZoomBtn: document.getElementById('reset-zoom-btn') as HTMLButtonElement,
-  timeframeSelector: document.getElementById('timeframe-selector')!,
+  walletToggle: document.getElementById('wallet-toggle') as HTMLInputElement,
+  walletLabel: document.getElementById('wallet-label')!,
+  tradeHistory: document.getElementById('trade-history') as HTMLElement,
+  resetZoomBtn: document.getElementById('reset-zoom-btn')!,
+  manualOverridesContainer: document.getElementById('manual-overrides-container')!,
+  manualTpInput: document.getElementById('manual-tp-input') as HTMLInputElement,
+  manualSlInput: document.getElementById('manual-sl-input') as HTMLInputElement,
 };
 
 // --- RENDER FUNCTIONS ---
@@ -114,7 +157,73 @@ const renderNews = () => {
 const renderAllocation = () => {
     const value = state.allocation;
     DOMElements.allocationValue.textContent = `${value}%`;
-    DOMElements.allocationSlider.style.setProperty('--track-fill-percent', `${value}%`);
+};
+
+const renderTradeHistory = () => {
+    if (state.tradeHistory.length === 0) {
+        DOMElements.tradeHistory.innerHTML = `<div class="placeholder">No trades completed yet.</div>`;
+        return;
+    }
+    DOMElements.tradeHistory.innerHTML = state.tradeHistory.map(trade => `
+        <div class="trade-item">
+            <span>${trade.action} ${trade.asset.split('/')[0]} @ ${trade.entryPrice.toFixed(2)} -> ${trade.closePrice.toFixed(2)}</span>
+            <span class="trade-item-pnl ${trade.pnl >= 0 ? 'positive' : 'negative'}">
+                ${trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)} (${trade.pnlPercent.toFixed(2)}%)
+            </span>
+        </div>
+    `).join('');
+};
+
+const renderDirectivePanel = () => {
+    if (state.activeTrade) {
+        // Render Live Trade Monitor
+        const { asset, action, entry, target, stopLoss, allocation } = state.activeTrade;
+        const pnl = (state.currentPrice - entry) * (action === 'LONG' ? 1 : -1);
+        const pnlPercent = (pnl / entry) * 100;
+        const MOCK_PORTFOLIO_SIZE = 10000;
+        const tradeValue = MOCK_PORTFOLIO_SIZE * (allocation / 100);
+        const pnlValue = tradeValue * (pnlPercent / 100);
+
+        const isProfit = pnlValue >= 0;
+
+        const range = Math.abs(target - stopLoss);
+        const progressToTarget = Math.max(0, Math.min(100, action === 'LONG' ? ((state.currentPrice - entry) / (target - entry)) * 100 : ((entry - state.currentPrice) / (entry - target)) * 100));
+        const progressToStop = Math.max(0, Math.min(100, action === 'LONG' ? ((entry - state.currentPrice) / (entry - stopLoss)) * 100 : ((state.currentPrice - entry) / (stopLoss - entry)) * 100));
+
+
+        DOMElements.directiveOutput.innerHTML = `
+            <div id="live-trade-monitor">
+                <div class="trade-monitor-header">
+                    <span class="trade-monitor-asset">${asset}</span>
+                    <span class="trade-monitor-direction direction-${action.toLowerCase()}">${action}</span>
+                </div>
+                <div class="pnl-display">
+                    <div class="pnl-value" style="color: ${isProfit ? 'var(--text-green)' : 'var(--text-red)'}" aria-live="polite">${isProfit ? '+' : ''}${pnlValue.toFixed(2)} USD</div>
+                    <div class="pnl-percent" aria-live="polite">${pnlPercent.toFixed(2)}%</div>
+                </div>
+                <div class="trade-details-grid">
+                     <div class="trade-detail-item"><strong>Entry Price</strong><span>${entry.toFixed(2)}</span></div>
+                     <div class="trade-detail-item"><strong>Current Price</strong><span>${state.currentPrice.toFixed(2)}</span></div>
+                </div>
+                 <div class="trade-progress-bar" id="tp-progress">
+                    <div class="progress-label"><span>Entry: ${entry.toFixed(2)}</span><span>Target: ${target.toFixed(2)}</span></div>
+                    <div class="progress-track"><div class="progress-fill" style="width: ${progressToTarget}%"></div></div>
+                </div>
+                 <div class="trade-progress-bar" id="sl-progress">
+                    <div class="progress-label"><span>Stop: ${stopLoss.toFixed(2)}</span><span>Entry: ${entry.toFixed(2)}</span></div>
+                    <div class="progress-track"><div class="progress-fill" style="width: ${progressToStop}%"></div></div>
+                </div>
+            </div>
+        `;
+        DOMElements.generateBtnContainer.innerHTML = `<button id="close-trade-btn" class="btn btn-sell">FORCE CLOSE TRADE</button>`;
+        document.getElementById('close-trade-btn')?.addEventListener('click', () => closeTrade('manual'));
+
+    } else {
+        // Render default view
+        DOMElements.directiveOutput.innerHTML = `<span class="placeholder">Select a persona and generate a directive...</span>`;
+        DOMElements.generateBtnContainer.innerHTML = `<button id="generate-directive-btn" class="btn btn-buy">GENERATE DIRECTIVE</button>`;
+        document.getElementById('generate-directive-btn')?.addEventListener('click', handleGenerateDirective);
+    }
 };
 
 
@@ -150,12 +259,139 @@ const handleAllocationChange = (e: Event) => {
     renderAllocation();
 };
 
+const handleManualTpChange = (e: Event) => {
+    const value = (e.target as HTMLInputElement).value;
+    state.manualTakeProfit = value ? parseFloat(value) : null;
+};
+
+const handleManualSlChange = (e: Event) => {
+    const value = (e.target as HTMLInputElement).value;
+    state.manualStopLoss = value ? parseFloat(value) : null;
+};
+
+const handleWalletToggle = (e: Event) => {
+    state.isWalletConnected = (e.target as HTMLInputElement).checked;
+    if (state.isWalletConnected) {
+        addLog(`Exodus Wallet simulation mode ENABLED. Trades will be executed hypothetically.`);
+        DOMElements.walletLabel.textContent = 'EXODUS SIM CONNECTED';
+        DOMElements.manualOverridesContainer.classList.add('hidden');
+    } else {
+        addLog(`Exodus Wallet simulation mode DISABLED.`);
+        DOMElements.walletLabel.textContent = 'EXODUS WALLET SIM';
+        DOMElements.manualOverridesContainer.classList.remove('hidden');
+    }
+};
+
+const startTrade = (directive: TradeDirective) => {
+    // Create a mutable copy of the directive to apply overrides
+    const effectiveDirective = { ...directive };
+
+    // Apply manual overrides if they exist and are valid numbers
+    if (state.manualTakeProfit !== null && !isNaN(state.manualTakeProfit)) {
+        addLog(`Overriding AI Take Profit (${effectiveDirective.target}) with manual value: ${state.manualTakeProfit}`);
+        effectiveDirective.target = state.manualTakeProfit;
+    }
+    if (state.manualStopLoss !== null && !isNaN(state.manualStopLoss)) {
+        addLog(`Overriding AI Stop Loss (${effectiveDirective.stopLoss}) with manual value: ${state.manualStopLoss}`);
+        effectiveDirective.stopLoss = state.manualStopLoss;
+    }
+
+    state.activeTrade = { ...effectiveDirective, allocation: state.allocation };
+    state.currentPrice = effectiveDirective.entry;
+    addLog(`Directive routed to Exodus Wallet (SIM). Executing ${effectiveDirective.action} ${effectiveDirective.asset}...`);
+    
+    // Reset and prepare chart for live data
+    if (marketChart) {
+        marketChart.data.labels = [new Date()];
+        marketChart.data.datasets[0].data = [effectiveDirective.entry];
+        marketChart.update();
+        marketChart.resetZoom();
+    }
+
+    renderDirectivePanel();
+    state.priceUpdateInterval = window.setInterval(updatePrice, 1000);
+};
+
+const updatePrice = () => {
+    if (!state.activeTrade) return;
+
+    const volatility = 0.0005; 
+    // Add a slight directional bias to make it more realistic than a pure random walk
+    const drift = (Math.random() - 0.49) * state.activeTrade.entry * (volatility * 0.1);
+    const priceChange = (Math.random() - 0.5) * state.activeTrade.entry * volatility;
+    state.currentPrice += priceChange + drift;
+
+    // Update chart
+    if (marketChart) {
+        marketChart.data.labels.push(new Date());
+        marketChart.data.datasets[0].data.push(state.currentPrice);
+
+        // Keep chart history to a manageable size (e.g., last 120 points)
+        if (marketChart.data.labels.length > 120) {
+            marketChart.data.labels.shift();
+            marketChart.data.datasets[0].data.shift();
+        }
+        marketChart.update('none'); // Use 'none' for smooth non-animated update
+    }
+
+    const { action, target, stopLoss } = state.activeTrade;
+    
+    if (action === 'LONG' && state.currentPrice >= target) {
+        closeTrade('tp');
+    } else if (action === 'LONG' && state.currentPrice <= stopLoss) {
+        closeTrade('sl');
+    } else if (action === 'SHORT' && state.currentPrice <= target) {
+        closeTrade('tp');
+    } else if (action === 'SHORT' && state.currentPrice >= stopLoss) {
+        closeTrade('sl');
+    } else {
+       renderDirectivePanel(); // re-render with new price
+    }
+};
+
+const closeTrade = (reason: 'manual' | 'tp' | 'sl') => {
+    if (!state.activeTrade || state.priceUpdateInterval === null) return;
+
+    clearInterval(state.priceUpdateInterval);
+    state.priceUpdateInterval = null;
+
+    const closePrice = reason === 'tp' ? state.activeTrade.target : reason === 'sl' ? state.activeTrade.stopLoss : state.currentPrice;
+    const { asset, action, entry } = state.activeTrade;
+
+    const pnl = (closePrice - entry) * (action === 'LONG' ? 1 : -1);
+    const pnlPercent = (pnl / entry) * 100;
+
+    state.tradeHistory.unshift({
+        asset,
+        action,
+        entryPrice: entry,
+        closePrice,
+        pnl,
+        pnlPercent,
+        timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
+    });
+
+    addLog(`SIM TRADE CLOSED (${reason.toUpperCase()}). P/L: ${pnl.toFixed(4)} (${pnlPercent.toFixed(2)}%)`);
+    
+    state.activeTrade = null;
+    state.currentPrice = 0;
+
+    renderTradeHistory();
+    renderDirectivePanel();
+    const generateBtn = document.getElementById('generate-directive-btn') as HTMLButtonElement | null;
+    if (generateBtn) generateBtn.disabled = false;
+};
+
+
 const handleGenerateDirective = async () => {
-    if (state.isGenerating) return;
+    if (state.isGenerating || state.activeTrade) return;
     
     state.isGenerating = true;
-    DOMElements.generateBtn.disabled = true;
-    DOMElements.generateBtn.textContent = 'GENERATING...';
+    const generateBtn = document.getElementById('generate-directive-btn') as HTMLButtonElement | null;
+    if (generateBtn) {
+        generateBtn.disabled = true;
+        generateBtn.textContent = 'GENERATING...';
+    }
     DOMElements.directiveOutput.innerHTML = '';
     setStatus('SYNTHESIZING DIRECTIVE...');
     addLog('Directive generation initiated.');
@@ -171,176 +407,63 @@ const handleGenerateDirective = async () => {
         const prompt = `Based on the current (mock) market data showing general greed (78), high volume ($45.2B), and high volatility, provide a trade directive. My capital allocation is ${state.allocation}%.`;
         addLog('Sending request to AI Core...');
         
-        const result = await ai.models.generateContentStream({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: {
-                systemInstruction: activePersona.systemInstruction
-            },
-        });
+        if (state.isWalletConnected) {
+             const result = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: prompt,
+                config: {
+                    systemInstruction: activePersona.systemInstruction,
+                    responseMimeType: "application/json",
+                    responseSchema: JSON_SCHEMA,
+                },
+            });
+            addLog('Received JSON directive from AI Core.');
+            try {
+                const directive = JSON.parse(result.text) as TradeDirective;
+                addLog('Directive parsed successfully.');
+                startTrade(directive);
+            } catch (parseError) {
+                 throw new Error("Failed to parse AI response as valid JSON.");
+            }
 
-        addLog('Receiving stream from AI Core...');
-        let fullResponse = '';
-        const cursor = `<span class="cursor"></span>`;
-        DOMElements.directiveOutput.innerHTML = cursor;
+        } else {
+            const result = await ai.models.generateContentStream({
+                model: "gemini-2.5-flash",
+                contents: prompt,
+                config: { systemInstruction: activePersona.systemInstruction },
+            });
 
-        for await (const chunk of result) {
-            fullResponse += chunk.text;
-            DOMElements.directiveOutput.innerHTML = fullResponse.replace(/\n/g, '<br>') + cursor;
+            addLog('Receiving stream from AI Core...');
+            let fullResponse = '';
+            const cursor = `<span class="cursor"></span>`;
+            DOMElements.directiveOutput.innerHTML = cursor;
+
+            for await (const chunk of result) {
+                fullResponse += chunk.text;
+                DOMElements.directiveOutput.innerHTML = fullResponse.replace(/\n/g, '<br>') + cursor;
+            }
+
+            DOMElements.directiveOutput.innerHTML = fullResponse.replace(/\n/g, '<br>'); // Remove cursor
+            addLog('Directive received and displayed.');
         }
-
-        DOMElements.directiveOutput.innerHTML = fullResponse.replace(/\n/g, '<br>'); // Remove cursor
-        addLog('Directive received and displayed.');
 
     } catch (error) {
         console.error("Gemini API Error:", error);
-        const errorMessage = 'ERROR: Failed to communicate with AI Core.';
+        const errorMessage = `ERROR: Failed to communicate with AI Core. ${error instanceof Error ? error.message : ''}`;
         DOMElements.directiveOutput.innerHTML = `<span class="error-message">${errorMessage}</span>`;
         setStatus(errorMessage, true);
         addLog(errorMessage);
     } finally {
         state.isGenerating = false;
-        DOMElements.generateBtn.disabled = false;
-        DOMElements.generateBtn.textContent = 'GENERATE DIRECTIVE';
+        // If not in a trade, re-enable the button
+        if (!state.activeTrade) {
+             const finalGenerateBtn = document.getElementById('generate-directive-btn') as HTMLButtonElement | null;
+             if(finalGenerateBtn) {
+                finalGenerateBtn.disabled = false;
+                finalGenerateBtn.textContent = 'GENERATE DIRECTIVE';
+             }
+        }
         setStatus('AWAITING DIRECTIVE');
-    }
-};
-
-const handleResetZoom = () => {
-    if (marketChartInstance) {
-        marketChartInstance.resetZoom();
-    }
-};
-
-const generateInitialData = (): PriceDataPoint[] => {
-    const data: PriceDataPoint[] = [];
-    const now = new Date();
-    let currentPrice = 69000;
-    const minutesInDay = 24 * 60; // Generate one day of initial minute-by-minute data
-
-    for (let i = minutesInDay; i > 0; i--) {
-        const timestamp = new Date(now.getTime() - i * 60 * 1000);
-        const fluctuation = (Math.random() - 0.5) * (currentPrice * 0.001); 
-        const drift = (Math.random() - 0.49) * 5; 
-        currentPrice += fluctuation + drift;
-        
-        if (currentPrice < 60000) currentPrice = 60000 + Math.random() * 100;
-        if (currentPrice > 75000) currentPrice = 75000 - Math.random() * 100;
-
-        data.push({ x: timestamp, y: currentPrice });
-    }
-    return data;
-};
-
-const startRealtimeFeed = () => {
-    addLog("Connecting to real-time BTC/USD price feed...");
-    
-    setInterval(() => {
-        const lastPrice = historicalData.length > 0 ? historicalData[historicalData.length - 1].y : 69000;
-        const fluctuation = (Math.random() - 0.5) * (lastPrice * 0.0005);
-        const drift = (Math.random() - 0.5) * 2;
-        let newPrice = lastPrice + fluctuation + drift;
-
-        if (newPrice < 60000) newPrice = 60000 + Math.random() * 50;
-        if (newPrice > 75000) newPrice = 75000 - Math.random() * 50;
-        
-        const newPoint: PriceDataPoint = { x: new Date(), y: newPrice };
-
-        historicalData.push(newPoint);
-        if (historicalData.length > 7 * 24 * 60) { // Keep ~7 days of minute-level data
-            historicalData.shift();
-        }
-
-        if (state.activeTimeframe === '1H' && marketChartInstance) {
-            const chartData = marketChartInstance.data.datasets[0].data;
-            chartData.push(newPoint);
-            
-            if (chartData.length > 300) { 
-                chartData.shift();
-            }
-            
-            marketChartInstance.update('quiet'); 
-        }
-    }, 2000); // New data every 2 seconds
-
-    addLog("Price feed connected. Streaming live data.");
-};
-
-const aggregateData = (data: PriceDataPoint[], hours: number): PriceDataPoint[] => {
-    if (hours <= 0) return data;
-    const aggregated: PriceDataPoint[] = [];
-    const interval = hours * 60 * 60 * 1000;
-    let lastTimestamp = 0;
-    
-    for (const point of data) {
-        if (point.x.getTime() - lastTimestamp > interval) {
-            aggregated.push(point);
-            lastTimestamp = point.x.getTime();
-        }
-    }
-    if (data.length > 0 && (aggregated.length === 0 || aggregated[aggregated.length - 1].x !== data[data.length - 1].x)) {
-         aggregated.push(data[data.length - 1]);
-    }
-
-    return aggregated;
-};
-
-const updateChartView = (timeframe: string) => {
-    if (!marketChartInstance || !historicalData.length) return;
-
-    let newData: PriceDataPoint[];
-    let timeUnit: string;
-    let tooltipFormat: string = 'MMM d, h:mm a';
-    let displayFormats: any = { hour: 'h a', day: 'MMM d' };
-
-    switch (timeframe) {
-        case '4H':
-            newData = aggregateData(historicalData, 4);
-            timeUnit = 'hour';
-            break;
-        case '1D':
-            newData = aggregateData(historicalData, 24);
-            timeUnit = 'day';
-            tooltipFormat = 'MMM d, yyyy';
-            break;
-        case '1W':
-             newData = aggregateData(historicalData, 24 * 7);
-             timeUnit = 'week';
-             tooltipFormat = 'MMM d, yyyy';
-             break;
-        case '1H':
-        default:
-            const liveViewDataPoints = 300;
-            newData = historicalData.slice(-liveViewDataPoints);
-            timeUnit = 'minute';
-            tooltipFormat = 'h:mm:ss a';
-            displayFormats = { minute: 'h:mm a', hour: 'h:mm a' };
-            break;
-    }
-
-    marketChartInstance.data.datasets[0].data = newData;
-    marketChartInstance.options.scales.x.time.unit = timeUnit;
-    marketChartInstance.options.scales.x.time.tooltipFormat = tooltipFormat;
-    marketChartInstance.options.scales.x.time.displayFormats = displayFormats;
-    marketChartInstance.update();
-    marketChartInstance.resetZoom();
-};
-
-const handleTimeframeChange = (e: Event) => {
-    const target = (e.target as HTMLElement).closest('[data-timeframe]');
-    if (target instanceof HTMLElement) {
-        const newTimeframe = target.dataset.timeframe;
-        if (newTimeframe && newTimeframe !== state.activeTimeframe) {
-            state.activeTimeframe = newTimeframe;
-            
-            document.querySelectorAll('#timeframe-selector .timeframe-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            target.classList.add('active');
-            
-            updateChartView(newTimeframe);
-            addLog(`Chart timeframe switched to ${newTimeframe}.`);
-        }
     }
 };
 
@@ -348,27 +471,32 @@ const initializeChart = () => {
     const ctx = DOMElements.marketChartCanvas.getContext('2d');
     if (!ctx) return;
 
-    if (marketChartInstance) {
-        marketChartInstance.destroy();
-    }
-
     const gradient = ctx.createLinearGradient(0, 0, 0, 350);
     gradient.addColorStop(0, 'rgba(0, 255, 255, 0.3)');
     gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
+    
+    // Generate some plausible historical data
+    const initialData = [];
+    const initialLabels = [];
+    let price = 68000;
+    const now = Date.now();
+    for (let i = 0; i < 60; i++) {
+        price += (Math.random() - 0.5) * 150;
+        initialLabels.push(new Date(now - (60 - i) * 60000)); // 60 minutes of data
+        initialData.push(price);
+    }
 
-    marketChartInstance = new Chart(ctx, {
+    marketChart = new Chart(ctx, {
         type: 'line',
         data: {
+            labels: initialLabels,
             datasets: [{
                 label: 'BTC Price',
-                data: [], // Initially empty, populated by updateChartView
+                data: initialData,
                 borderColor: 'rgba(0, 255, 255, 1)',
                 backgroundColor: gradient,
                 borderWidth: 2,
                 pointRadius: 0,
-                pointHitRadius: 10,
-                pointHoverRadius: 5,
-                pointHoverBackgroundColor: 'rgba(0, 255, 255, 1)',
                 tension: 0.4,
                 fill: true,
             }]
@@ -376,109 +504,68 @@ const initializeChart = () => {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            animation: {
-                duration: 0 // Disable for performance with real-time data
-            },
-            interaction: {
-                mode: 'index',
-                intersect: false,
-            },
-            plugins: {
+            plugins: { 
                 legend: { display: false },
-                tooltip: {
-                    enabled: true,
-                    backgroundColor: 'rgba(19, 26, 45, 0.9)',
-                    titleColor: '#00ffff',
-                    bodyColor: '#e0e0e0',
-                    borderColor: '#00ffff44',
-                    borderWidth: 1,
-                    padding: 10,
-                    titleFont: { family: "'Roboto Mono', monospace" },
-                    bodyFont: { family: "'Roboto Mono', monospace" },
-                    callbacks: {
-                        label: function(context: any) {
-                            let label = context.dataset.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
-                            if (context.parsed.y !== null) {
-                                label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
-                            }
-                            return label;
-                        }
-                    }
-                },
                 zoom: {
-                    pan: {
-                        enabled: true,
-                        mode: 'x',
-                        threshold: 5,
-                    },
-                    zoom: {
-                        wheel: { enabled: true },
-                        pinch: { enabled: true },
-                        mode: 'x',
-                    }
+                    pan: { enabled: true, mode: 'x' },
+                    zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' }
                 }
             },
             scales: {
-                x: {
+                x: { 
                     type: 'time',
                     time: {
                         unit: 'minute',
-                        tooltipFormat: 'h:mm:ss a',
-                        displayFormats: { minute: 'h:mm a', hour: 'h:mm a' }
+                        tooltipFormat: 'HH:mm:ss'
                     },
                     grid: { display: false },
-                    ticks: {
+                    ticks: { 
+                        display: true,
                         color: '#a0aec0',
-                        font: { family: "'Roboto Mono', monospace" },
                         maxRotation: 0,
                         autoSkip: true,
-                        maxTicksLimit: 10,
+                        maxTicksLimit: 7
                     }
                 },
                 y: {
                     grid: { color: 'rgba(0, 255, 255, 0.1)' },
-                    ticks: {
-                        color: '#a0aec0',
-                        font: { family: "'Roboto Mono', monospace" },
-                        callback: function(value: any) {
-                            return '$' + (Number(value) / 1000) + 'k';
-                        }
-                    }
+                    ticks: { color: '#a0aec0', font: { family: "'Roboto Mono', monospace" } }
                 }
             }
         }
     });
-    updateChartView(state.activeTimeframe);
+};
+
+const handleResetZoom = () => {
+    if (marketChart) marketChart.resetZoom();
 };
 
 // --- INITIALIZATION ---
 
 const init = () => {
-  // Generate initial historical data
-  historicalData = generateInitialData();
-
   // Initial Renders
   renderPersonas();
   renderNews();
   renderAllocation();
+  renderDirectivePanel();
+  renderTradeHistory();
   initializeChart();
-
-  // Start the live feed after chart is ready
-  startRealtimeFeed();
 
   // Add initial logs
   addLog("Strategic Synthesis Core Initialized.");
+  addLog("Market data feed connected.");
   addLog("Awaiting user input.");
 
   // Event Listeners
   DOMElements.personaSelector.addEventListener('click', handlePersonaSelect);
   DOMElements.allocationSlider.addEventListener('input', handleAllocationChange);
-  DOMElements.generateBtn.addEventListener('click', handleGenerateDirective);
+  DOMElements.walletToggle.addEventListener('change', handleWalletToggle);
   DOMElements.resetZoomBtn.addEventListener('click', handleResetZoom);
-  DOMElements.timeframeSelector.addEventListener('click', handleTimeframeChange);
+  DOMElements.manualTpInput.addEventListener('input', handleManualTpChange);
+  DOMElements.manualSlInput.addEventListener('input', handleManualSlChange);
+  
+  // Set initial visibility of manual overrides
+  DOMElements.manualOverridesContainer.classList.toggle('hidden', state.isWalletConnected);
 };
 
 document.addEventListener('DOMContentLoaded', init);

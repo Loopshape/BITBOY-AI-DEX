@@ -25,9 +25,18 @@
     <div class="container">
         <header class="header">
             <span>AI-BITBOY-DEX :: STRATEGIC SYNTHESIS CORE</span>
-            <div class="status-indicator">
-                <div id="status-light" class="status-light"></div>
-                <span id="status-text">SYSTEM ONLINE</span>
+            <div class="header-controls">
+                <div class="wallet-toggle-container">
+                    <label for="wallet-toggle" id="wallet-label" class="wallet-toggle-label">EXODUS WALLET SIM</label>
+                    <label class="wallet-toggle">
+                        <input id="wallet-toggle" type="checkbox">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="status-indicator">
+                    <div id="status-light" class="status-light"></div>
+                    <span id="status-text">SYSTEM ONLINE</span>
+                </div>
             </div>
         </header>
 
@@ -35,11 +44,11 @@
             <div id="market-chart-panel" class="panel">
                 <div class="panel-header">
                     <h2 class="panel-title"><i class="fas fa-chart-bar"></i>MARKET ANALYSIS :: BTC/USD</h2>
-                    <div id="timeframe-selector" class="timeframe-selector">
-                        <button class="timeframe-btn active" data-timeframe="1H">1H</button>
-                        <button class="timeframe-btn" data-timeframe="4H">4H</button>
-                        <button class="timeframe-btn" data-timeframe="1D">1D</button>
-                        <button class="timeframe-btn" data-timeframe="1W">1W</button>
+                    <div class="timeframe-selector">
+                        <button class="timeframe-btn active">1H</button>
+                        <button class="timeframe-btn">4H</button>
+                        <button class="timeframe-btn">1D</button>
+                        <button class="timeframe-btn">1W</button>
                         <button id="reset-zoom-btn" class="timeframe-btn" aria-label="Reset Zoom"><i class="fas fa-search-minus"></i></button>
                     </div>
                 </div>
@@ -86,6 +95,16 @@
                             <label for="allocation-slider" class="form-label">ALLOCATION: <span id="allocation-value">50%</span></label>
                             <input type="range" id="allocation-slider" min="0" max="100" value="50" class="form-range">
                         </div>
+                        <div id="manual-overrides-container" class="manual-overrides-container">
+                            <div class="override-input-group">
+                                <label for="manual-tp-input" class="form-label">TAKE PROFIT</label>
+                                <input type="number" id="manual-tp-input" class="override-input" placeholder="e.g., 70000">
+                            </div>
+                            <div class="override-input-group">
+                                <label for="manual-sl-input" class="form-label">STOP LOSS</label>
+                                <input type="number" id="manual-sl-input" class="override-input" placeholder="e.g., 65000">
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -100,6 +119,11 @@
                              <h3 class="ai-log-title">OPERATIONS LOG</h3>
                             <div id="ai-log" class="ai-log">
                                 <!-- Log items will be injected here -->
+                            </div>
+                             <h3 class="ai-log-title">TRADE HISTORY</h3>
+                            <div id="trade-history" class="trade-history">
+                                <!-- Trade history will be injected here -->
+                                 <div class="placeholder">No trades completed yet.</div>
                             </div>
                         </div>
                     </div>
