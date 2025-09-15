@@ -1,7 +1,8 @@
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 
-// FIX: Declare Chart since it is likely loaded from a script tag and not imported.
+// FIX: Declare types for external libraries loaded via script tags
 declare var Chart: any;
+declare var WalletConnectModal: any;
 
 // --- TYPE DEFINITIONS ---
 interface Persona {
@@ -14,6 +15,7 @@ interface Persona {
 interface LogEntry {
   timestamp: string;
   message: string;
+  type?: 'default' | 'ai-analysis';
 }
 
 interface TradeDirective {
@@ -46,6 +48,26 @@ if (!API_KEY) {
   throw new Error("API_KEY environment variable not set");
 }
 const ai = new GoogleGenAI({ apiKey: API_KEY });
+
+// --- WALLETCONNECT CONFIG ---
+// IMPORTANT: You MUST get your own projectId from https://cloud.walletconnect.com
+const WALLETCONNECT_PROJECT_ID = 'b913f56d39578659b9222a028643831b'; 
+
+const chains = ['eip155:1']; // Ethereum Mainnet
+
+const metadata = {
+  name: 'AI-BITBOY-DEX',
+  description: 'AI-driven trading synthesis core',
+  url: window.location.host,
+  icons: ['https://walletconnect.com/walletconnect-logo.png']
+};
+
+const walletConnectModal = new WalletConnectModal.WalletConnectModal({
+  projectId: WALLETCONNECT_PROJECT_ID,
+  chains,
+  metadata
+});
+
 
 const JSON_SCHEMA = {
     type: Type.OBJECT,
@@ -98,6 +120,8 @@ let state = {
   logs: [] as LogEntry[],
   isGenerating: false,
   isWalletConnected: false,
+  walletAddress: null as string | null,
+  isAutotraderEnabled: false,
   activeTrade: null as ActiveTrade | null,
   pendingDirective: null as TradeDirective | null,
   currentPrice: 0,
@@ -121,13 +145,13 @@ const DOMElements = {
   directivePanel: document.getElementById('directive-panel')!,
   directiveOutput: document.getElementById('directive-output')!,
   marketChartCanvas: document.getElementById('marketChart') as HTMLCanvasElement,
-  walletToggle: document.getElementById('wallet-toggle') as HTMLInputElement,
-  walletLabel: document.getElementById('wallet-label')!,
+  connectWalletBtn: document.getElementById('connect-wallet-btn')!,
   tradeHistory: document.getElementById('trade-history') as HTMLElement,
   resetZoomBtn: document.getElementById('reset-zoom-btn')!,
   manualOverridesContainer: document.getElementById('manual-overrides-container')!,
   manualTpInput: document.getElementById('manual-tp-input') as HTMLInputElement,
   manualSlInput: document.getElementById('manual-sl-input') as HTMLInputElement,
+  autotraderSwitch: document.getElementById('autotrader-switch') as HTMLInputElement,
 };
 
 // --- RENDER FUNCTIONS ---
@@ -143,7 +167,7 @@ const renderPersonas = () => {
 
 const renderLogs = () => {
   DOMElements.aiLog.innerHTML = state.logs.map(log => `
-    <div class="log-item">
+    <div class="log-item log-type-${log.type || 'default'}">
       <span class="timestamp">[${log.timestamp}]</span>
       <span class="message">${log.message}</span>
     </div>
@@ -176,6 +200,14 @@ const renderTradeHistory = () => {
 };
 
 const renderDirectivePanel = () => {
+    // Re-trigger animations on content change
+    const elementsToAnimate = [DOMElements.directiveOutput, DOMElements.generateBtnContainer];
+    elementsToAnimate.forEach(el => {
+        el.classList.remove('content-fade-in');
+        void el.offsetWidth; // Trigger reflow
+        el.classList.add('content-fade-in');
+    });
+
     if (state.activeTrade) {
         // Render Live Trade Monitor
         const { asset, action, entry, target, stopLoss, allocation } = state.activeTrade;
@@ -219,8 +251,8 @@ const renderDirectivePanel = () => {
         DOMElements.generateBtnContainer.innerHTML = `<button id="close-trade-btn" class="btn btn-sell">FORCE CLOSE TRADE</button>`;
         document.getElementById('close-trade-btn')?.addEventListener('click', () => closeTrade('manual'));
 
-    } else if (state.pendingDirective) {
-        // Render Confirmation Panel
+    } else if (state.pendingDirective && !state.isAutotraderEnabled) {
+        // Render Confirmation Panel (only in manual mode)
         const { asset, action, entry, reasoning } = state.pendingDirective;
         const target = state.manualTakeProfit ?? state.pendingDirective.target;
         const stopLoss = state.manualStopLoss ?? state.pendingDirective.stopLoss;
@@ -248,19 +280,52 @@ const renderDirectivePanel = () => {
         document.getElementById('cancel-trade-btn')?.addEventListener('click', handleCancelTrade);
 
     } else {
-        // Render default view
-        DOMElements.directiveOutput.innerHTML = `<span class="placeholder">Select a persona and generate a directive...</span>`;
-        DOMElements.generateBtnContainer.innerHTML = `<button id="generate-directive-btn" class="btn btn-buy">GENERATE DIRECTIVE</button>`;
-        document.getElementById('generate-directive-btn')?.addEventListener('click', handleGenerateDirective);
+        // Render default or autotrader view
+        if (state.isAutotraderEnabled) {
+            DOMElements.directiveOutput.innerHTML = `<span class="placeholder">AUTOTRADER ACTIVE: Monitoring market for trading opportunities...</span>`;
+            DOMElements.generateBtnContainer.innerHTML = `<button id="generate-directive-btn" class="btn btn-buy" disabled>AUTOTRADER ENGAGED</button>`;
+        } else {
+            DOMElements.directiveOutput.innerHTML = `<span class="placeholder">Select a persona and generate a directive...</span>`;
+            DOMElements.generateBtnContainer.innerHTML = `<button id="generate-directive-btn" class="btn btn-buy">GENERATE DIRECTIVE</button>`;
+            document.getElementById('generate-directive-btn')?.addEventListener('click', handleGenerateDirective);
+        }
     }
 };
 
 
 // --- LOGIC FUNCTIONS ---
 
-const addLog = (message: string) => {
+const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    const container = document.getElementById('notification-container');
+    if (!container) return;
+
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    
+    const iconClass = type === 'success' 
+        ? 'fa-check-circle' 
+        : type === 'error' 
+        ? 'fa-exclamation-triangle' 
+        : 'fa-info-circle';
+    
+    notification.innerHTML = `<i class="fas ${iconClass}"></i> ${message}`;
+    container.appendChild(notification);
+
+    // Animate in
+    setTimeout(() => {
+        notification.classList.add('show');
+    }, 10);
+
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        notification.classList.remove('show');
+        notification.addEventListener('transitionend', () => notification.remove());
+    }, 5000);
+};
+
+const addLog = (message: string, type: LogEntry['type'] = 'default') => {
   const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
-  state.logs.unshift({ timestamp, message });
+  state.logs.unshift({ timestamp, message, type });
   if (state.logs.length > 50) state.logs.pop(); // Keep log size manageable
   renderLogs();
 };
@@ -298,17 +363,28 @@ const handleManualSlChange = (e: Event) => {
     state.manualStopLoss = value ? parseFloat(value) : null;
 };
 
-const handleWalletToggle = (e: Event) => {
-    state.isWalletConnected = (e.target as HTMLInputElement).checked;
+const handleWalletConnection = () => {
     if (state.isWalletConnected) {
-        addLog(`Exodus Wallet simulation mode ENABLED. Trades will be executed hypothetically.`);
-        DOMElements.walletLabel.textContent = 'EXODUS SIM CONNECTED';
-        DOMElements.manualOverridesContainer.classList.add('hidden');
+        walletConnectModal.disconnect();
     } else {
-        addLog(`Exodus Wallet simulation mode DISABLED.`);
-        DOMElements.walletLabel.textContent = 'EXODUS WALLET SIM';
-        DOMElements.manualOverridesContainer.classList.remove('hidden');
+        walletConnectModal.open();
     }
+};
+
+const handleAutotraderToggle = (e: Event) => {
+    state.isAutotraderEnabled = (e.target as HTMLInputElement).checked;
+    if (state.isAutotraderEnabled) {
+        addLog("AUTOTRADER ENGAGED. AI is now in full control.");
+        showNotification("Autotrader Engaged!", 'info');
+        // If idle, kick off the trading process
+        if (!state.activeTrade && !state.pendingDirective && !state.isGenerating) {
+            handleGenerateDirective();
+        }
+    } else {
+        addLog("AUTOTRADER DISENGAGED. Manual confirmation required.");
+        showNotification("Autotrader Disengaged.", 'info');
+    }
+    renderDirectivePanel(); // Re-render to update UI state
 };
 
 const startTrade = (directive: TradeDirective) => {
@@ -327,7 +403,7 @@ const startTrade = (directive: TradeDirective) => {
 
     state.activeTrade = { ...effectiveDirective, allocation: state.allocation };
     state.currentPrice = effectiveDirective.entry;
-    addLog(`Directive routed to Exodus Wallet (SIM). Executing ${effectiveDirective.action} ${effectiveDirective.asset}...`);
+    addLog(`Directive routed to wallet (${state.walletAddress}). Executing ${effectiveDirective.action} ${effectiveDirective.asset}...`);
     
     // Reset and prepare chart for live data
     if (marketChart) {
@@ -378,18 +454,21 @@ const updatePrice = () => {
     }
 };
 
-const closeTrade = (reason: 'manual' | 'tp' | 'sl') => {
+const closeTrade = async (reason: 'manual' | 'tp' | 'sl') => {
     if (!state.activeTrade || state.priceUpdateInterval === null) return;
 
+    // Clear interval and get trade details
     clearInterval(state.priceUpdateInterval);
     state.priceUpdateInterval = null;
 
     const closePrice = reason === 'tp' ? state.activeTrade.target : reason === 'sl' ? state.activeTrade.stopLoss : state.currentPrice;
     const { asset, action, entry } = state.activeTrade;
 
+    // Calculate P/L
     const pnl = (closePrice - entry) * (action === 'LONG' ? 1 : -1);
     const pnlPercent = (pnl / entry) * 100;
 
+    // Update trade history state
     state.tradeHistory.unshift({
         asset,
         action,
@@ -400,18 +479,65 @@ const closeTrade = (reason: 'manual' | 'tp' | 'sl') => {
         timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
     });
 
+    // Log the closure
     addLog(`SIM TRADE CLOSED (${reason.toUpperCase()}). P/L: ${pnl.toFixed(4)} (${pnlPercent.toFixed(2)}%)`);
+
+    // Show appropriate notification based on closure reason
+    if (reason === 'tp') {
+        showNotification(`Take Profit HIT on ${asset}! P/L: +${pnl.toFixed(2)} USD`, 'success');
+    } else if (reason === 'sl') {
+        showNotification(`Stop Loss triggered on ${asset}. P/L: ${pnl.toFixed(2)} USD`, 'error');
+    } else if (reason === 'manual') {
+        showNotification(`Trade on ${asset} manually closed. P/L: ${pnl.toFixed(2)} USD`, 'info');
+    }
     
+    // Reset active trade state
     state.activeTrade = null;
     state.currentPrice = 0;
 
+    // Re-render UI immediately
     renderTradeHistory();
     renderDirectivePanel();
+
+    // --- AI post-trade analysis in the background ---
+    try {
+        const activePersona = PERSONAS.find(p => p.id === state.activePersonaId);
+        if (!activePersona) throw new Error("Active persona not found for analysis.");
+
+        const analysisPrompt = `A recent ${action} trade on ${asset} from an entry price of ${entry.toFixed(2)} was just closed at ${closePrice.toFixed(2)}. The reason for closing was: ${reason === 'tp' ? 'Take Profit' : reason === 'sl' ? 'Stop Loss' : 'Manual Close'}. The resulting P/L is ${pnl.toFixed(2)} USD (${pnlPercent.toFixed(2)}%). Provide a concise, one-sentence post-trade analysis from the perspective of a ${activePersona.name}.`;
+
+        addLog('Requesting AI post-trade analysis...');
+
+        const result = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: analysisPrompt,
+        });
+        
+        const analysisText = result.text.trim();
+        addLog(`AI Analysis: "${analysisText}"`, 'ai-analysis');
+
+    } catch (error) {
+        console.error("AI Post-Trade Analysis Error:", error);
+        addLog(`ERROR: Failed to get post-trade analysis. ${error instanceof Error ? error.message : ''}`);
+    }
+
+    // --- Autotrader logic ---
+    if (state.isAutotraderEnabled) {
+        addLog("AUTOTRADER: Trade cycle complete. Searching for next opportunity...");
+        // Use a small delay to make the UI feel less frantic
+        setTimeout(() => {
+            if(state.isAutotraderEnabled) handleGenerateDirective();
+        }, 2000); 
+    }
 };
 
 const handleConfirmTrade = () => {
     if (!state.pendingDirective) return;
-    addLog('Trade directive confirmed by user.');
+    if (state.isAutotraderEnabled) {
+        addLog('Autotrader is executing the trade automatically.');
+    } else {
+        addLog('Trade directive confirmed by user.');
+    }
     startTrade(state.pendingDirective);
     state.pendingDirective = null;
 };
@@ -427,11 +553,7 @@ const handleGenerateDirective = async () => {
     if (state.isGenerating || state.activeTrade) return;
     
     state.isGenerating = true;
-    const generateBtn = document.getElementById('generate-directive-btn') as HTMLButtonElement | null;
-    if (generateBtn) {
-        generateBtn.disabled = true;
-        generateBtn.textContent = 'GENERATING...';
-    }
+    renderDirectivePanel(); // Update UI to show disabled autotrader button if active
     DOMElements.directiveOutput.innerHTML = '';
     setStatus('SYNTHESIZING DIRECTIVE...');
     addLog('Directive generation initiated.');
@@ -447,7 +569,7 @@ const handleGenerateDirective = async () => {
         const prompt = `Based on the current (mock) market data showing general greed (78), high volume ($45.2B), and high volatility, provide a trade directive. My capital allocation is ${state.allocation}%.`;
         addLog('Sending request to AI Core...');
         
-        if (state.isWalletConnected) {
+        if (state.isWalletConnected || state.isAutotraderEnabled) {
              const result = await ai.models.generateContent({
                 model: "gemini-2.5-flash",
                 contents: prompt,
@@ -460,9 +582,16 @@ const handleGenerateDirective = async () => {
             addLog('Received JSON directive from AI Core.');
             try {
                 const directive = JSON.parse(result.text) as TradeDirective;
-                addLog('Directive parsed successfully. Awaiting confirmation.');
-                state.pendingDirective = directive;
-                renderDirectivePanel();
+                state.pendingDirective = directive; // Set for confirmation (manual or auto)
+
+                if (state.isAutotraderEnabled) {
+                    addLog(`Autotrader received directive: ${directive.action} ${directive.asset}. Executing...`);
+                    handleConfirmTrade();
+                } else {
+                    addLog('Directive parsed successfully. Awaiting confirmation.');
+                    showNotification('New directive generated. Awaiting confirmation.');
+                    renderDirectivePanel();
+                }
             } catch (parseError) {
                  throw new Error("Failed to parse AI response as valid JSON.");
             }
@@ -486,6 +615,7 @@ const handleGenerateDirective = async () => {
 
             DOMElements.directiveOutput.innerHTML = fullResponse.replace(/\n/g, '<br>'); // Remove cursor
             addLog('Directive received and displayed.');
+            showNotification('New directive received and displayed.');
         }
 
     } catch (error) {
@@ -577,6 +707,36 @@ const handleResetZoom = () => {
     if (marketChart) marketChart.resetZoom();
 };
 
+const subscribeToWalletEvents = () => {
+    walletConnectModal.subscribeState((newState: any) => {
+        const button = DOMElements.connectWalletBtn;
+        const buttonText = button.querySelector('span')!;
+
+        const wasConnected = state.isWalletConnected;
+        state.isWalletConnected = newState.open === false && !!newState.address;
+        state.walletAddress = newState.address || null;
+
+        if (state.isWalletConnected) {
+            if (!wasConnected) { // Fire only on new connection
+                const shortAddress = `${state.walletAddress!.substring(0, 6)}...${state.walletAddress!.substring(state.walletAddress!.length - 4)}`;
+                addLog(`Wallet connected: ${shortAddress}`);
+                showNotification('Wallet connected successfully!', 'success');
+            }
+            button.classList.add('connected');
+            const shortAddress = `${state.walletAddress!.substring(0, 4)}...${state.walletAddress!.substring(state.walletAddress!.length - 4)}`;
+            buttonText.textContent = `CONNECTED: ${shortAddress}`;
+        } else {
+            if (wasConnected) { // Fire only on disconnect
+                addLog('Wallet disconnected.');
+                showNotification('Wallet disconnected.', 'info');
+            }
+            button.classList.remove('connected');
+            buttonText.textContent = 'CONNECT WALLET';
+        }
+    });
+};
+
+
 // --- INITIALIZATION ---
 
 const init = () => {
@@ -591,18 +751,20 @@ const init = () => {
   // Add initial logs
   addLog("Strategic Synthesis Core Initialized.");
   addLog("Market data feed connected.");
+  addLog("Chart initialized. Use mouse wheel to zoom and drag to pan.");
   addLog("Awaiting user input.");
 
   // Event Listeners
   DOMElements.personaSelector.addEventListener('click', handlePersonaSelect);
   DOMElements.allocationSlider.addEventListener('input', handleAllocationChange);
-  DOMElements.walletToggle.addEventListener('change', handleWalletToggle);
+  DOMElements.connectWalletBtn.addEventListener('click', handleWalletConnection);
+  DOMElements.autotraderSwitch.addEventListener('change', handleAutotraderToggle);
   DOMElements.resetZoomBtn.addEventListener('click', handleResetZoom);
   DOMElements.manualTpInput.addEventListener('input', handleManualTpChange);
   DOMElements.manualSlInput.addEventListener('input', handleManualSlChange);
   
-  // Set initial visibility of manual overrides
-  DOMElements.manualOverridesContainer.classList.toggle('hidden', state.isWalletConnected);
+  // Initialize WalletConnect state subscription
+  subscribeToWalletEvents();
 };
 
 document.addEventListener('DOMContentLoaded', init);
