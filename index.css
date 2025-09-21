@@ -332,6 +332,8 @@ body {
 .pnl-display { text-align: center; margin-bottom: 1.5rem; }
 .pnl-value { font-size: 2.5rem; font-weight: 700; }
 .pnl-percent { font-size: 1rem; color: var(--text-secondary); }
+.pnl-display .positive { color: var(--accent-green); }
+.pnl-display .negative { color: var(--accent-pink); }
 
 .trade-progress-bar { margin-top: 0.75rem; }
 .progress-label { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.25rem; }
