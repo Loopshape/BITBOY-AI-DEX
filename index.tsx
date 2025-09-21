@@ -12,6 +12,12 @@ interface Persona {
   systemInstruction: string;
 }
 
+interface AIProvider {
+    id: 'gemini' | 'ollama';
+    name: string;
+    icon: string;
+}
+
 interface LogEntry {
   timestamp: string;
   message: string;
@@ -105,6 +111,11 @@ const PERSONAS: Persona[] = [
   },
 ];
 
+const AI_PROVIDERS: AIProvider[] = [
+    { id: 'gemini', name: 'Gemini Cloud', icon: 'fa-solid fa-cloud' },
+    { id: 'ollama', name: 'Local Ollama', icon: 'fa-solid fa-server' },
+];
+
 const MOCK_NEWS = [
   "Fed holds interest rates steady, citing 'modest' economic growth.",
   "Ethereum's 'Pectra' upgrade sets sight on Q1 2025 launch.",
@@ -115,6 +126,8 @@ const MOCK_NEWS = [
 
 // --- STATE MANAGEMENT ---
 let marketChart: any = null; // Hold chart instance
+let priceSocket: WebSocket | null = null;
+
 let state = {
   activePersonaId: 'swing',
   allocation: 50,
@@ -125,11 +138,16 @@ let state = {
   isAutotraderEnabled: false,
   activeTrade: null as ActiveTrade | null,
   pendingDirective: null as TradeDirective | null,
-  currentPrice: 0,
+  currentPrice: 68000, // Start with a default price
   tradeHistory: [] as TradeHistoryEntry[],
-  priceUpdateInterval: null as number | null,
   manualTakeProfit: null as number | null,
   manualStopLoss: null as number | null,
+  aiProvider: 'gemini' as 'gemini' | 'ollama',
+  localModelName: 'llama3:8b',
+  sentiment: {
+      value: 78,
+      label: 'Greed',
+  }
 };
 
 // --- DOM ELEMENT SELECTORS ---
@@ -153,6 +171,10 @@ const DOMElements = {
   manualTpInput: document.getElementById('manual-tp-input') as HTMLInputElement,
   manualSlInput: document.getElementById('manual-sl-input') as HTMLInputElement,
   autotraderSwitch: document.getElementById('autotrader-switch') as HTMLInputElement,
+  providerSelector: document.getElementById('provider-selector')!,
+  localModelContainer: document.getElementById('local-model-container')!,
+  localModelInput: document.getElementById('local-model-input') as HTMLInputElement,
+  sentimentGaugeContainer: document.getElementById('sentiment-gauge-container')!,
 };
 
 // --- RENDER FUNCTIONS ---
@@ -165,6 +187,55 @@ const renderPersonas = () => {
     </div>
   `).join('');
 };
+
+const renderAIProviderSelector = () => {
+    DOMElements.providerSelector.innerHTML = AI_PROVIDERS.map(p => `
+        <div class="provider-card ${p.id === state.aiProvider ? 'active' : ''}" data-id="${p.id}" role="button" aria-pressed="${p.id === state.aiProvider}" tabindex="0">
+            <div class="provider-avatar"><i class="${p.icon}"></i></div>
+            <p class="provider-name">${p.name}</p>
+        </div>
+    `).join('');
+
+    if (state.aiProvider === 'ollama') {
+        DOMElements.localModelContainer.style.display = 'block';
+        DOMElements.localModelInput.value = state.localModelName;
+    } else {
+        DOMElements.localModelContainer.style.display = 'none';
+    }
+};
+
+const renderSentimentGauge = () => {
+    const { value, label } = state.sentiment;
+    const angle = -90 + (value / 100) * 180; // Convert 0-100 scale to -90 to +90 degrees
+
+    const sentimentColor = `hsl(${(value / 100) * 120}, 70%, 50%)`; // Red (0) to Green (120)
+
+    DOMElements.sentimentGaugeContainer.innerHTML = `
+        <svg viewBox="0 0 200 120" class="sentiment-gauge-svg">
+            <defs>
+                <linearGradient id="gauge-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="${'#F92672'}" />
+                    <stop offset="50%" stop-color="${'#E6DB74'}" />
+                    <stop offset="100%" stop-color="${'#A6E22E'}" />
+                </linearGradient>
+            </defs>
+            <path d="M 10 100 A 90 90 0 0 1 190 100" class="gauge-arc-bg" fill="none" stroke="${'var(--surface-dark)'}" stroke-width="18" stroke-linecap="round"/>
+            <path d="M 10 100 A 90 90 0 0 1 190 100" class="gauge-arc"/>
+            <text x="20" y="115" class="gauge-tick-label">FEAR</text>
+            <text x="180" y="115" class="gauge-tick-label">GREED</text>
+            
+            <g transform="translate(100 100)">
+                 <path d="M 0 -8 L 8 0 L 0 85 L -8 0 Z" class="gauge-needle" transform="rotate(${angle})" />
+                 <circle cx="0" cy="0" r="12" class="gauge-pivot-bg" fill="${'var(--bg-dark)'}" />
+                 <circle cx="0" cy="0" r="8" class="gauge-pivot" />
+            </g>
+            
+            <text x="100" y="75" class="gauge-text-value" style="fill: ${sentimentColor};">${value}</text>
+            <text x="100" y="95" class="gauge-text-label">${label}</text>
+        </svg>
+    `;
+};
+
 
 const renderLogs = () => {
   DOMElements.aiLog.innerHTML = state.logs.map(log => `
@@ -201,13 +272,16 @@ const renderTradeHistory = () => {
 };
 
 const renderDirectivePanel = () => {
-    // Re-trigger animations on content change
-    const elementsToAnimate = [DOMElements.directiveOutput, DOMElements.generateBtnContainer];
-    elementsToAnimate.forEach(el => {
-        el.classList.remove('content-fade-in');
-        void el.offsetWidth; // Trigger reflow
-        el.classList.add('content-fade-in');
-    });
+    // Re-trigger animations on content change only if the content is actually changing
+    if (DOMElements.directiveOutput.innerHTML.includes('placeholder') || DOMElements.directiveOutput.innerHTML === '') {
+        const elementsToAnimate = [DOMElements.directiveOutput, DOMElements.generateBtnContainer];
+        elementsToAnimate.forEach(el => {
+            el.classList.remove('content-fade-in');
+            void el.offsetWidth; // Trigger reflow
+            el.classList.add('content-fade-in');
+        });
+    }
+
 
     if (state.activeTrade) {
         // Render Live Trade Monitor
@@ -266,7 +340,7 @@ const renderDirectivePanel = () => {
                 <div class="confirmation-details-grid">
                     <div class="confirmation-detail-item"><strong>Asset</strong><span>${asset}</span></div>
                     <div class="confirmation-detail-item"><strong>Action</strong><span class="action-${action.toLowerCase()}">${action}</span></div>
-                    <div class="confirmation-detail-item"><strong>Entry</strong><span>${entry.toFixed(2)}</span></div>
+                    <div class="confirmation-detail-item"><strong>Entry (~${entry.toFixed(2)})</strong><span>${state.currentPrice.toFixed(2)}</span></div>
                     <div class="confirmation-detail-item"><strong>Allocation</strong><span>${allocation}%</span></div>
                     <div class="confirmation-detail-item"><strong>Take Profit</strong><span>${target.toFixed(2)}</span></div>
                     <div class="confirmation-detail-item"><strong>Stop Loss</strong><span>${stopLoss.toFixed(2)}</span></div>
@@ -349,6 +423,25 @@ const handlePersonaSelect = (e: Event) => {
   }
 };
 
+const handleAIProviderSelect = (e: Event) => {
+    const target = (e.target as HTMLElement).closest('.provider-card');
+    if (target instanceof HTMLElement) {
+        const id = target.dataset.id as 'gemini' | 'ollama';
+        if (id && id !== state.aiProvider) {
+            state.aiProvider = id;
+            const providerName = AI_PROVIDERS.find(p => p.id === id)?.name;
+            addLog(`AI Provider switched to: ${providerName}`);
+            renderAIProviderSelector();
+        }
+    }
+};
+
+const handleLocalModelChange = (e: Event) => {
+    const value = (e.target as HTMLInputElement).value;
+    state.localModelName = value.trim();
+    addLog(`Local model set to: ${state.localModelName}`);
+};
+
 const handleAllocationChange = (e: Event) => {
     state.allocation = parseInt((e.target as HTMLInputElement).value, 10);
     renderAllocation();
@@ -392,6 +485,9 @@ const startTrade = (directive: TradeDirective) => {
     // Create a mutable copy of the directive to apply overrides
     const effectiveDirective = { ...directive };
 
+    // Set entry price to current market price for accuracy
+    effectiveDirective.entry = state.currentPrice;
+
     // Apply manual overrides if they exist and are valid numbers
     if (state.manualTakeProfit !== null && !isNaN(state.manualTakeProfit)) {
         addLog(`Overriding AI Take Profit (${effectiveDirective.target}) with manual value: ${state.manualTakeProfit}`);
@@ -403,42 +499,19 @@ const startTrade = (directive: TradeDirective) => {
     }
 
     state.activeTrade = { ...effectiveDirective, allocation: state.allocation };
-    state.currentPrice = effectiveDirective.entry;
-    addLog(`Directive routed to wallet (${state.walletAddress}). Executing ${effectiveDirective.action} ${effectiveDirective.asset}...`);
+    addLog(`Directive routed to wallet (${state.walletAddress}). Executing ${effectiveDirective.action} ${effectiveDirective.asset} @ ${effectiveDirective.entry.toFixed(2)}...`);
     
     // Reset and prepare chart for live data
     if (marketChart) {
-        marketChart.data.labels = [new Date()];
-        marketChart.data.datasets[0].data = [effectiveDirective.entry];
-        marketChart.update();
+        // Don't clear old data, just start appending new data
         marketChart.resetZoom();
     }
 
     renderDirectivePanel();
-    state.priceUpdateInterval = window.setInterval(updatePrice, 1000);
 };
 
-const updatePrice = () => {
+const checkTradeStatus = () => {
     if (!state.activeTrade) return;
-
-    const volatility = 0.0005; 
-    // Add a slight directional bias to make it more realistic than a pure random walk
-    const drift = (Math.random() - 0.49) * state.activeTrade.entry * (volatility * 0.1);
-    const priceChange = (Math.random() - 0.5) * state.activeTrade.entry * volatility;
-    state.currentPrice += priceChange + drift;
-
-    // Update chart
-    if (marketChart) {
-        marketChart.data.labels.push(new Date());
-        marketChart.data.datasets[0].data.push(state.currentPrice);
-
-        // Keep chart history to a manageable size (e.g., last 120 points)
-        if (marketChart.data.labels.length > 120) {
-            marketChart.data.labels.shift();
-            marketChart.data.datasets[0].data.shift();
-        }
-        marketChart.update('none'); // Use 'none' for smooth non-animated update
-    }
 
     const { action, target, stopLoss } = state.activeTrade;
     
@@ -456,11 +529,7 @@ const updatePrice = () => {
 };
 
 const closeTrade = async (reason: 'manual' | 'tp' | 'sl') => {
-    if (!state.activeTrade || state.priceUpdateInterval === null) return;
-
-    // Clear interval and get trade details
-    clearInterval(state.priceUpdateInterval);
-    state.priceUpdateInterval = null;
+    if (!state.activeTrade) return;
 
     const closePrice = reason === 'tp' ? state.activeTrade.target : reason === 'sl' ? state.activeTrade.stopLoss : state.currentPrice;
     const { asset, action, entry } = state.activeTrade;
@@ -494,7 +563,6 @@ const closeTrade = async (reason: 'manual' | 'tp' | 'sl') => {
     
     // Reset active trade state
     state.activeTrade = null;
-    state.currentPrice = 0;
 
     // Re-render UI immediately
     renderTradeHistory();
@@ -554,11 +622,25 @@ const handleGenerateDirective = async () => {
     if (state.isGenerating || state.activeTrade) return;
     
     state.isGenerating = true;
-    renderDirectivePanel(); // Update UI to show disabled autotrader button if active
+    renderDirectivePanel();
     DOMElements.directiveOutput.innerHTML = '';
     setStatus('SYNTHESIZING DIRECTIVE...');
     addLog('Directive generation initiated.');
 
+    if (state.aiProvider === 'ollama') {
+        await handleGenerateDirectiveOllama();
+    } else {
+        await handleGenerateDirectiveGemini();
+    }
+    
+    state.isGenerating = false;
+    if (!state.activeTrade && !state.pendingDirective) {
+         renderDirectivePanel();
+    }
+    setStatus('AWAITING DIRECTIVE');
+};
+
+const handleGenerateDirectiveGemini = async () => {
     const activePersona = PERSONAS.find(p => p.id === state.activePersonaId);
     if (!activePersona) {
         addLog('Error: No active persona found.');
@@ -567,8 +649,8 @@ const handleGenerateDirective = async () => {
     }
 
     try {
-        const prompt = `Based on the current (mock) market data showing general greed (78), high volume ($45.2B), and high volatility, provide a trade directive. My capital allocation is ${state.allocation}%.`;
-        addLog('Sending request to AI Core...');
+        const prompt = `Based on the current BTC/USD price of approximately ${state.currentPrice.toFixed(2)}, market sentiment of ${state.sentiment.label} (${state.sentiment.value}), high volume, and high volatility, provide a trade directive. My capital allocation is ${state.allocation}%.`;
+        addLog('Sending request to Gemini AI Core...');
         
         if (state.isWalletConnected || state.isAutotraderEnabled) {
              const result = await ai.models.generateContent({
@@ -580,10 +662,10 @@ const handleGenerateDirective = async () => {
                     responseSchema: JSON_SCHEMA,
                 },
             });
-            addLog('Received JSON directive from AI Core.');
+            addLog('Received JSON directive from Gemini AI Core.');
             try {
                 const directive = JSON.parse(result.text) as TradeDirective;
-                state.pendingDirective = directive; // Set for confirmation (manual or auto)
+                state.pendingDirective = directive;
 
                 if (state.isAutotraderEnabled) {
                     addLog(`Autotrader received directive: ${directive.action} ${directive.asset}. Executing...`);
@@ -604,7 +686,7 @@ const handleGenerateDirective = async () => {
                 config: { systemInstruction: activePersona.systemInstruction },
             });
 
-            addLog('Receiving stream from AI Core...');
+            addLog('Receiving stream from Gemini AI Core...');
             let fullResponse = '';
             const cursor = `<span class="cursor"></span>`;
             DOMElements.directiveOutput.innerHTML = cursor;
@@ -614,7 +696,7 @@ const handleGenerateDirective = async () => {
                 DOMElements.directiveOutput.innerHTML = fullResponse.replace(/\n/g, '<br>') + cursor;
             }
 
-            DOMElements.directiveOutput.innerHTML = fullResponse.replace(/\n/g, '<br>'); // Remove cursor
+            DOMElements.directiveOutput.innerHTML = fullResponse.replace(/\n/g, '<br>');
             addLog('Directive received and displayed.');
             showNotification('New directive received and displayed.');
         }
@@ -625,14 +707,153 @@ const handleGenerateDirective = async () => {
         DOMElements.directiveOutput.innerHTML = `<span class="error-message">${errorMessage}</span>`;
         setStatus(errorMessage, true);
         addLog(errorMessage);
-    } finally {
-        state.isGenerating = false;
-        // If not in a trade or pending confirmation, re-render the directive panel
-        if (!state.activeTrade && !state.pendingDirective) {
-             renderDirectivePanel();
-        }
-        setStatus('AWAITING DIRECTIVE');
     }
+};
+
+const handleGenerateDirectiveOllama = async () => {
+    const activePersona = PERSONAS.find(p => p.id === state.activePersonaId);
+    if (!activePersona) {
+        addLog('Error: No active persona found.');
+        setStatus('Error: Persona not found', true);
+        return;
+    }
+
+    try {
+        const prompt = `Based on the current BTC/USD price of approximately ${state.currentPrice.toFixed(2)}, market sentiment of ${state.sentiment.label} (${state.sentiment.value}), high volume, and high volatility, provide a trade directive. My capital allocation is ${state.allocation}%.`;
+        addLog(`Sending request to Local AI Core (${state.localModelName})...`);
+
+        const needsJson = state.isWalletConnected || state.isAutotraderEnabled;
+
+        const response = await fetch('http://localhost:11434/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: state.localModelName,
+                system: activePersona.systemInstruction,
+                prompt: prompt,
+                format: needsJson ? 'json' : undefined,
+                stream: !needsJson,
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Local AI server responded with status ${response.status}: ${errorText}`);
+        }
+
+        if (!needsJson && response.body) { // Streaming text
+             addLog('Receiving stream from Local AI Core...');
+             const reader = response.body.getReader();
+             const decoder = new TextDecoder();
+             let fullResponse = '';
+             const cursor = `<span class="cursor"></span>`;
+             DOMElements.directiveOutput.innerHTML = cursor;
+
+             let leftover = '';
+             while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const chunk = leftover + decoder.decode(value, { stream: true });
+                const lines = chunk.split('\n');
+                leftover = lines.pop() || '';
+                for (const line of lines) {
+                    if (line.trim() === '') continue;
+                    try {
+                        const ollamaChunk = JSON.parse(line);
+                        if (ollamaChunk.response) {
+                            fullResponse += ollamaChunk.response;
+                            DOMElements.directiveOutput.innerHTML = fullResponse.replace(/\n/g, '<br>') + cursor;
+                        }
+                    } catch (e) {
+                        console.warn("Could not parse Ollama stream chunk:", line);
+                    }
+                }
+             }
+             DOMElements.directiveOutput.innerHTML = fullResponse.replace(/\n/g, '<br>');
+             addLog('Directive received and displayed.');
+             showNotification('New directive received and displayed.');
+        } else { // JSON response
+            const ollamaResponse = await response.json();
+            addLog('Received JSON directive from Local AI Core.');
+            try {
+                const directive = JSON.parse(ollamaResponse.response) as TradeDirective;
+                state.pendingDirective = directive;
+                if (state.isAutotraderEnabled) {
+                    addLog(`Autotrader received directive: ${directive.action} ${directive.asset}. Executing...`);
+                    handleConfirmTrade();
+                } else {
+                    addLog('Directive parsed successfully. Awaiting confirmation.');
+                    showNotification('New directive generated. Awaiting confirmation.');
+                    renderDirectivePanel();
+                }
+            } catch (parseError) {
+                console.error("Ollama JSON parse error. Raw response:", ollamaResponse.response);
+                throw new Error("Failed to parse Local AI response as valid JSON.");
+            }
+        }
+    } catch (error) {
+        console.error("Ollama API Error:", error);
+        const errorMessage = (error instanceof TypeError && error.message.includes('fetch'))
+            ? 'ERROR: Could not connect to Local AI. Is Ollama running at http://localhost:11434?'
+            : `ERROR: Failed to communicate with Local AI Core. ${error instanceof Error ? error.message : ''}`;
+
+        DOMElements.directiveOutput.innerHTML = `<span class="error-message">${errorMessage}</span>`;
+        setStatus(errorMessage, true);
+        addLog(errorMessage);
+    }
+};
+
+const connectPriceFeedSocket = () => {
+    // Close existing socket if it exists
+    if (priceSocket && priceSocket.readyState < 2) {
+        priceSocket.close();
+    }
+
+    priceSocket = new WebSocket('wss://wstream.binance.com/ws/btcusdt@trade');
+
+    priceSocket.onopen = () => {
+        addLog('Real-time market data feed connected.');
+    };
+
+    priceSocket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        const price = parseFloat(data.p);
+
+        if (price && price !== state.currentPrice) {
+            state.currentPrice = price;
+
+            // Update chart
+            if (marketChart) {
+                marketChart.data.labels.push(new Date());
+                marketChart.data.datasets[0].data.push(state.currentPrice);
+
+                // Keep chart history to a manageable size (e.g., last 300 points)
+                if (marketChart.data.labels.length > 300) {
+                    marketChart.data.labels.shift();
+                    marketChart.data.datasets[0].data.shift();
+                }
+                marketChart.update('none'); // Use 'none' for smooth non-animated update
+            }
+            
+            // If a trade is active, check its status
+            if (state.activeTrade) {
+                checkTradeStatus();
+            } else if (state.pendingDirective) {
+                // If waiting for confirmation, update the displayed entry price
+                renderDirectivePanel();
+            }
+        }
+    };
+
+    priceSocket.onerror = (error) => {
+        console.error('WebSocket Error:', error);
+        addLog('ERROR: Market data feed connection failed.');
+    };
+
+    priceSocket.onclose = () => {
+        addLog('Market data feed disconnected. Attempting to reconnect in 5s...');
+        setTimeout(connectPriceFeedSocket, 5000); // Reconnect after 5 seconds
+    };
 };
 
 const initializeChart = () => {
@@ -643,24 +864,13 @@ const initializeChart = () => {
     gradient.addColorStop(0, 'rgba(102, 217, 239, 0.4)');
     gradient.addColorStop(1, 'rgba(102, 217, 239, 0)');
     
-    // Generate some plausible historical data
-    const initialData = [];
-    const initialLabels = [];
-    let price = 68000;
-    const now = Date.now();
-    for (let i = 0; i < 60; i++) {
-        price += (Math.random() - 0.5) * 150;
-        initialLabels.push(new Date(now - (60 - i) * 60000)); // 60 minutes of data
-        initialData.push(price);
-    }
-
     marketChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: initialLabels,
+            labels: [],
             datasets: [{
                 label: 'BTC Price',
-                data: initialData,
+                data: [],
                 borderColor: '#66D9EF',
                 backgroundColor: gradient,
                 borderWidth: 2,
@@ -747,6 +957,8 @@ const subscribeToWalletEvents = () => {
 const init = () => {
   // Initial Renders
   renderPersonas();
+  renderAIProviderSelector();
+  renderSentimentGauge();
   renderNews();
   renderAllocation();
   renderDirectivePanel();
@@ -755,12 +967,16 @@ const init = () => {
 
   // Add initial logs
   addLog("Strategic Synthesis Core Initialized.");
-  addLog("Market data feed connected.");
   addLog("Chart initialized. Use mouse wheel to zoom and drag to pan.");
   addLog("Awaiting user input.");
+  
+  // Start live data feed
+  connectPriceFeedSocket();
 
   // Event Listeners
   DOMElements.personaSelector.addEventListener('click', handlePersonaSelect);
+  DOMElements.providerSelector.addEventListener('click', handleAIProviderSelect);
+  DOMElements.localModelInput.addEventListener('change', handleLocalModelChange);
   DOMElements.allocationSlider.addEventListener('input', handleAllocationChange);
   DOMElements.connectWalletBtn.addEventListener('click', handleWalletConnection);
   DOMElements.autotraderSwitch.addEventListener('change', handleAutotraderToggle);

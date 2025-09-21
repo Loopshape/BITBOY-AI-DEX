@@ -52,6 +52,16 @@
                      <div id="persona-selector" class="persona-selector">
                         <!-- Personas will be injected here -->
                     </div>
+                    <div class="ai-provider-container">
+                        <h3 class="form-label">AI PROVIDER</h3>
+                        <div id="provider-selector" class="provider-selector">
+                            <!-- AI Providers will be injected here -->
+                        </div>
+                        <div id="local-model-container" class="provider-input-group" style="display: none;">
+                             <label for="local-model-input">OLLAMA MODEL</label>
+                             <input type="text" id="local-model-input" class="override-input">
+                        </div>
+                    </div>
                     <div class="allocation-container">
                         <label for="allocation-slider" class="form-label">ALLOCATION: <span id="allocation-value">50%</span></label>
                         <input type="range" id="allocation-slider" min="0" max="100" value="50" class="form-range">
@@ -113,11 +123,10 @@
             <div class="main-column column-right">
                 <div id="market-intel" class="panel">
                     <h2 class="panel-title"><i class="fas fa-satellite-dish"></i>MARKET INTEL</h2>
+                    <div id="sentiment-gauge-container">
+                        <!-- Sentiment Gauge will be injected here -->
+                    </div>
                     <div class="intel-grid">
-                        <div class="data-point">
-                            <h3>Sentiment</h3>
-                            <p class="positive">GREED (78)</p>
-                        </div>
                         <div class="data-point">
                             <h3>24H Volume</h3>
                             <p>$45.2B</p>
