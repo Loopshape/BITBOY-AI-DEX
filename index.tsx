@@ -640,8 +640,8 @@ const initializeChart = () => {
     if (!ctx) return;
 
     const gradient = ctx.createLinearGradient(0, 0, 0, 350);
-    gradient.addColorStop(0, 'rgba(0, 255, 255, 0.3)');
-    gradient.addColorStop(1, 'rgba(0, 255, 255, 0)');
+    gradient.addColorStop(0, 'rgba(102, 217, 239, 0.4)');
+    gradient.addColorStop(1, 'rgba(102, 217, 239, 0)');
     
     // Generate some plausible historical data
     const initialData = [];
@@ -661,7 +661,7 @@ const initializeChart = () => {
             datasets: [{
                 label: 'BTC Price',
                 data: initialData,
-                borderColor: 'rgba(0, 255, 255, 1)',
+                borderColor: '#66D9EF',
                 backgroundColor: gradient,
                 borderWidth: 2,
                 pointRadius: 0,
@@ -689,15 +689,15 @@ const initializeChart = () => {
                     grid: { display: false },
                     ticks: { 
                         display: true,
-                        color: '#a0aec0',
+                        color: '#75715E',
                         maxRotation: 0,
                         autoSkip: true,
                         maxTicksLimit: 7
                     }
                 },
                 y: {
-                    grid: { color: 'rgba(0, 255, 255, 0.1)' },
-                    ticks: { color: '#a0aec0', font: { family: "'Roboto Mono', monospace" } }
+                    grid: { color: '#49483e' },
+                    ticks: { color: '#75715E', font: { family: "'Roboto Mono', monospace" } }
                 }
             }
         }
