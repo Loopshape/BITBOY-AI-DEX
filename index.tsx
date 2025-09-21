@@ -67,14 +67,6 @@ const metadata = {
   icons: ['https://walletconnect.com/walletconnect-logo.png']
 };
 
-const web3Modal = new Web3Modal.Web3Modal({
-  projectId: WALLETCONNECT_PROJECT_ID,
-  standaloneChains: chains,
-  walletConnectVersion: 2,
-  metadata
-});
-
-
 const JSON_SCHEMA = {
     type: Type.OBJECT,
     properties: {
@@ -135,6 +127,7 @@ let logEntries: LogEntry[] = [];
 const MAX_LOG_ENTRIES = 100;
 let priceData: { x: number; y: number; }[] = [];
 let marketChart: any = null;
+let web3Modal: any; // Declared here, initialized on DOMContentLoaded
 
 // --- PERSISTENCE ---
 const saveState = () => {
@@ -562,6 +555,13 @@ const startPriceSimulation = () => {
 
 // --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
+    web3Modal = new Web3Modal.Standalone({
+        projectId: WALLETCONNECT_PROJECT_ID,
+        chains: chains,
+        walletConnectVersion: 2,
+        metadata
+    });
+
     const isRestored = !!localStorage.getItem('aiBitboyState');
     loadState(); 
 
