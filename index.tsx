@@ -126,6 +126,7 @@ const MOCK_NEWS = [
 // --- STATE MANAGEMENT ---
 let selectedPersonaId: string = PERSONAS[0].id;
 let selectedProviderId: AIProvider['id'] = 'gemini';
+let ollamaModel: string = 'llama3';
 let allocation: number = 50;
 let currentDirective: TradeDirective | null = null;
 let activeTrade: ActiveTrade | null = null;
@@ -145,6 +146,7 @@ const saveState = () => {
       logEntries,
       activeTrade,
       currentDirective,
+      ollamaModel,
     };
     localStorage.setItem('aiBitboyState', JSON.stringify(stateToSave));
   } catch (error) {
@@ -165,6 +167,7 @@ const loadState = () => {
         logEntries = savedState.logEntries || [];
         activeTrade = savedState.activeTrade || null;
         currentDirective = savedState.currentDirective || null;
+        ollamaModel = savedState.ollamaModel || 'llama3';
     } catch (error) {
         console.error("Failed to load state from localStorage:", error);
         localStorage.removeItem('aiBitboyState'); // Clear corrupted state
@@ -195,6 +198,7 @@ const renderPersonas = () => {
             selectedPersonaId = persona.id;
             updatePersonaSelection();
             addLog(`Persona changed to: ${persona.name}`);
+            saveState();
         });
         personaSelector.appendChild(personaCard);
     });
@@ -220,6 +224,7 @@ const renderProviders = () => {
             selectedProviderId = provider.id;
             update();
             addLog(`AI provider switched to ${provider.name}.`);
+            saveState();
         });
         providerSelector.appendChild(providerCard);
     });
@@ -291,27 +296,82 @@ const resetDirectivePanel = () => {
 const generateDirective = async () => {
     addLog("Generating new directive...");
     const generateBtn = getElem<HTMLButtonElement>('generate-directive-btn');
-    if(generateBtn) generateBtn.disabled = true;
+    if (generateBtn) {
+        generateBtn.disabled = true;
+        generateBtn.innerHTML = `SYNTHESIZING<span class="cursor">_</span>`;
+    }
     getElem('ai-status-text').textContent = 'AI SYNTHESIZING...';
 
-    // This is a mock response for demonstration
-    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate API call
-    const currentPrice = priceData.length > 0 ? priceData[priceData.length - 1].y : 68000;
-    const isLong = Math.random() > 0.5;
     const persona = getSelectedPersona();
-    
-    const mockDirective: TradeDirective = {
-        asset: 'BTC/USD',
-        action: isLong ? "LONG" : "SHORT",
-        entry: currentPrice,
-        target: currentPrice * (isLong ? 1.02 : 0.98), // 2% target
-        stopLoss: currentPrice * (isLong ? 0.99 : 1.01), // 1% stop
-        reasoning: `Based on ${persona.name} strategy, market conditions suggest a volatile move. We are entering a speculative ${isLong ? 'long' : 'short'} position.`
-    };
-    
-    addLog(`AI Directive Received: ${mockDirective.action} ${mockDirective.asset}`, 'ai-analysis');
-    displayDirective(mockDirective);
-    getElem('ai-status-text').textContent = 'DIRECTIVE RECEIVED';
+    const currentPrice = priceData.length > 0 ? priceData[priceData.length - 1].y : 68000;
+
+    const prompt = `
+        Market Context:
+        - Current BTC/USD Price: ${currentPrice.toFixed(2)}
+        - Recent News Headlines:
+          ${MOCK_NEWS.map(n => `- ${n}`).join('\n')}
+        
+        Based on the market context, your assigned persona, and the provided JSON schema, please provide a single, actionable trade directive.
+    `;
+
+    try {
+        let directive: TradeDirective | null = null;
+
+        if (selectedProviderId === 'gemini') {
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt,
+                config: {
+                    systemInstruction: `${persona.systemInstruction} You must respond ONLY with a valid JSON object that conforms to the provided schema. Do not include any other text, markdown, or explanation.`,
+                    responseMimeType: "application/json",
+                    responseSchema: JSON_SCHEMA,
+                }
+            });
+
+            const jsonString = response.text.trim();
+            directive = JSON.parse(jsonString) as TradeDirective;
+        } else if (selectedProviderId === 'ollama') {
+            const ollamaResponse = await fetch('http://localhost:11434/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: ollamaModel,
+                    messages: [
+                        { 
+                            role: 'system', 
+                            content: `${persona.systemInstruction} You must respond ONLY with a valid JSON object that conforms to this schema: ${JSON.stringify(JSON_SCHEMA)}. Do not include any other text, markdown, or explanation.` 
+                        },
+                        { role: 'user', content: prompt }
+                    ],
+                    stream: false,
+                    format: 'json'
+                })
+            });
+
+            if (!ollamaResponse.ok) {
+                const errorBody = await ollamaResponse.text();
+                throw new Error(`Ollama request failed: ${ollamaResponse.status} ${errorBody}`);
+            }
+
+            const responseData = await ollamaResponse.json();
+            const jsonString = responseData.message.content;
+            directive = JSON.parse(jsonString) as TradeDirective;
+        }
+
+        if (directive) {
+            addLog(`AI Directive Received: ${directive.action} ${directive.asset}`, 'ai-analysis');
+            displayDirective(directive);
+            getElem('ai-status-text').textContent = 'DIRECTIVE RECEIVED';
+        } else {
+            throw new Error("AI provider did not return a valid directive.");
+        }
+
+    } catch (error: any) {
+        console.error("Failed to generate directive:", error);
+        addLog(`Error generating directive: ${error.message}`, 'error');
+        getElem('ai-status-text').textContent = 'AI ERROR';
+        resetDirectivePanel();
+    }
 };
 
 const displayDirective = (directive: TradeDirective) => {
@@ -508,6 +568,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const connectWalletBtn = getElem('connect-wallet-btn');
     const allocationSlider = getElem<HTMLInputElement>('allocation-slider');
     const allocationValue = getElem('allocation-value');
+    const localModelInput = getElem<HTMLInputElement>('local-model-input');
 
     renderPersonas();
     renderProviders();
@@ -527,6 +588,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     allocationSlider.value = String(allocation);
     allocationValue.textContent = `${allocation}%`;
+    localModelInput.value = ollamaModel;
 
     if (isRestored && !activeTrade) {
         addLog('Session state restored from previous session.');
@@ -537,6 +599,10 @@ document.addEventListener('DOMContentLoaded', () => {
     allocationSlider.addEventListener('input', (e) => {
         allocation = parseInt((e.target as HTMLInputElement).value, 10);
         allocationValue.textContent = `${allocation}%`;
+        saveState();
+    });
+    localModelInput.addEventListener('input', (e) => {
+        ollamaModel = (e.target as HTMLInputElement).value;
         saveState();
     });
 
