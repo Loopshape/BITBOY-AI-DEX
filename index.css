@@ -90,15 +90,24 @@ body {
 .main-content {
     flex-grow: 1;
     display: grid;
-    grid-template-columns: 320px 1fr 320px;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: 2fr 1.5fr; /* Top row for chart is taller */
     gap: 1rem;
     padding: 1rem;
     overflow: hidden;
+    grid-template-areas:
+        "chart chart chart intel"
+        "synthesis directive ops history";
 }
 
-.main-column { display: flex; flex-direction: column; gap: 1rem; overflow: hidden; }
-.main-column .panel { flex-shrink: 0; }
-.main-column .panel:last-child { flex-grow: 1; }
+/* Panel placement on the new grid */
+#market-chart-panel { grid-area: chart; }
+#market-intel { grid-area: intel; }
+#ai-synthesis { grid-area: synthesis; }
+#directive-panel { grid-area: directive; }
+#ai-operations { grid-area: ops; }
+#trade-history-panel { grid-area: history; }
+
 
 /* Panels */
 .panel {
@@ -292,7 +301,6 @@ body {
 .trade-item-pnl.negative { color: var(--accent-pink); }
 
 /* Directive Panel */
-#directive-panel { flex-shrink: 1; }
 #directive-output { flex-grow: 1; padding: 1rem 0; display: flex; align-items: center; justify-content: center; }
 .btn-group { display: flex; gap: 1rem; }
 .btn {
