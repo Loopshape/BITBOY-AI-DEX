@@ -2,7 +2,7 @@ import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 
 // FIX: Declare types for external libraries loaded via script tags
 declare var Chart: any;
-declare var WalletConnectModal: any;
+declare var Web3Modal: any;
 
 // --- TYPE DEFINITIONS ---
 interface Persona {
@@ -62,9 +62,10 @@ const metadata = {
   icons: ['https://walletconnect.com/walletconnect-logo.png']
 };
 
-const walletConnectModal = new WalletConnectModal.WalletConnectModal({
+const web3Modal = new Web3Modal.Web3Modal({
   projectId: WALLETCONNECT_PROJECT_ID,
-  chains,
+  standaloneChains: chains,
+  walletConnectVersion: 2,
   metadata
 });
 
@@ -363,11 +364,11 @@ const handleManualSlChange = (e: Event) => {
     state.manualStopLoss = value ? parseFloat(value) : null;
 };
 
-const handleWalletConnection = () => {
+const handleWalletConnection = async () => {
     if (state.isWalletConnected) {
-        walletConnectModal.disconnect();
+        await web3Modal.disconnect();
     } else {
-        walletConnectModal.open();
+        await web3Modal.openModal();
     }
 };
 
@@ -708,13 +709,17 @@ const handleResetZoom = () => {
 };
 
 const subscribeToWalletEvents = () => {
-    walletConnectModal.subscribeState((newState: any) => {
+    // subscribeModal is called on any modal state change, so we poll wallet state inside
+    web3Modal.subscribeModal(() => {
         const button = DOMElements.connectWalletBtn;
         const buttonText = button.querySelector('span')!;
 
         const wasConnected = state.isWalletConnected;
-        state.isWalletConnected = newState.open === false && !!newState.address;
-        state.walletAddress = newState.address || null;
+        const newIsConnected = web3Modal.getIsConnected();
+        const newAddress = web3Modal.getAddress();
+
+        state.isWalletConnected = newIsConnected;
+        state.walletAddress = newAddress || null;
 
         if (state.isWalletConnected) {
             if (!wasConnected) { // Fire only on new connection
