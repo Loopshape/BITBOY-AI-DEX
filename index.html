@@ -28,19 +28,9 @@
         <header class="header">
             <span>AI-BITBOY-DEX :: STRATEGIC SYNTHESIS CORE</span>
             <div class="header-controls">
-                <button id="connect-wallet-btn">
-                    <i class="fas fa-wallet"></i> <span>CONNECT WALLET</span>
-                </button>
-                <div class="autotrader-toggle">
-                    <span>AUTOTRADER</span>
-                    <label class="switch">
-                        <input type="checkbox" id="autotrader-switch">
-                        <span class="slider round"></span>
-                    </label>
-                </div>
                 <div class="status-indicator">
                     <div id="status-light" class="status-light"></div>
-                    <span id="status-text">SYSTEM ONLINE</span>
+                    <span id="ai-status-text">SYSTEM ONLINE</span>
                 </div>
             </div>
         </header>
@@ -50,12 +40,18 @@
             <div id="market-chart-panel" class="panel">
                 <div class="panel-header">
                     <h2 class="panel-title"><i class="fas fa-chart-bar"></i>MARKET ANALYSIS :: BTC/USD</h2>
-                    <div class="timeframe-selector">
-                        <button class="timeframe-btn active">1H</button>
-                        <button class="timeframe-btn">4H</button>
-                        <button class="timeframe-btn">1D</button>
-                        <button class="timeframe-btn">1W</button>
-                        <button id="reset-zoom-btn" class="timeframe-btn" aria-label="Reset Zoom"><i class="fas fa-search-minus"></i></button>
+                    <div class="chart-controls">
+                         <div class="chart-toolbar">
+                             <button id="draw-trendline-btn" class="chart-tool-btn" aria-label="Draw Trendline" title="Draw Trendline"><i class="fas fa-pencil-ruler"></i></button>
+                             <button id="add-annotation-btn" class="chart-tool-btn" aria-label="Add Annotation" title="Add Annotation"><i class="fas fa-map-marker-alt"></i></button>
+                             <button id="clear-drawings-btn" class="chart-tool-btn" aria-label="Clear Drawings" title="Clear Drawings"><i class="fas fa-trash"></i></button>
+                        </div>
+                        <div class="timeframe-selector">
+                            <button class="timeframe-btn active" data-timeframe="1H">1H</button>
+                            <button class="timeframe-btn" data-timeframe="4H">4H</button>
+                            <button class="timeframe-btn" data-timeframe="1D">1D</button>
+                            <button id="reset-zoom-btn" class="timeframe-btn" aria-label="Reset Zoom" title="Reset Zoom"><i class="fas fa-search-minus"></i></button>
+                        </div>
                     </div>
                 </div>
                 <div id="chart-container">
@@ -64,21 +60,25 @@
             </div>
             <div id="market-intel" class="panel">
                 <h2 class="panel-title"><i class="fas fa-satellite-dish"></i>MARKET INTEL</h2>
-                <div id="sentiment-gauge-container">
-                    <!-- Sentiment Gauge will be injected here -->
+                <div id="order-book-container">
+                    <!-- Order book will be injected here -->
                 </div>
                 <div class="intel-grid">
-                    <div class="data-point">
+                     <div class="data-point">
                         <h3>24H Volume</h3>
                         <p>$45.2B</p>
                     </div>
-                    <div class="data-point">
+                     <div class="data-point">
                         <h3>Dominance</h3>
                         <p>BTC 51.7%</p>
                     </div>
-                    <div class="data-point">
+                     <div class="data-point">
                         <h3>Volatility</h3>
                         <p class="negative">HIGH</p>
+                    </div>
+                     <div class="data-point">
+                        <h3>Sentiment</h3>
+                        <p class="positive">GREED</p>
                     </div>
                 </div>
                 <h3 class="news-title">LATEST INTEL FEED</h3>
@@ -100,7 +100,10 @@
                     </div>
                     <div id="local-model-container" class="provider-input-group" style="display: none;">
                         <label for="local-model-input">OLLAMA MODEL</label>
-                        <input type="text" id="local-model-input" class="override-input" placeholder="e.g., llama3">
+                        <div class="input-with-button">
+                            <input type="text" id="local-model-input" class="override-input" placeholder="e.g., llama3">
+                            <button id="test-ollama-btn">Test</button>
+                        </div>
                     </div>
                 </div>
                 <div class="allocation-container">
@@ -131,20 +134,16 @@
             <div id="ai-operations" class="panel">
                 <h2 class="panel-title"><i class="fas fa-cogs"></i>AI OPERATIONS LOG</h2>
                 <div id="ai-operations-container">
-                    <div class="ai-status-box">
-                        <p id="ai-status-text" class="ai-status-text">AWAITING DIRECTIVE</p>
-                    </div>
                     <div id="ai-log" class="ai-log">
-                        <!-- Log items will be injected here -->
+                        <!-- Log entries will be injected here -->
                     </div>
                 </div>
             </div>
             <div id="trade-history-panel" class="panel">
-                <h2 class="panel-title"><i class="fas fa-history"></i>TRADE HISTORY</h2>
-                <div id="trade-history" class="trade-history">
+                 <h2 class="panel-title"><i class="fas fa-history"></i>TRADE HISTORY</h2>
+                 <div id="trade-history" class="trade-history">
                     <!-- Trade history will be injected here -->
-                    <div class="placeholder">No trades completed yet.</div>
-                </div>
+                 </div>
             </div>
         </main>
     </div>
