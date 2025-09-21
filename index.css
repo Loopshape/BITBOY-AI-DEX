@@ -78,13 +78,14 @@ body {
     flex-grow: 1;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    grid-template-rows: 2fr 1.5fr; /* Top row for chart is taller */
+    grid-template-rows: 2fr 1.5fr 1.2fr; /* Adjusted rows for new layout */
     gap: 1rem;
     padding: 1rem;
     overflow: hidden;
     grid-template-areas:
-        "chart chart chart intel"
-        "synthesis directive ops history";
+        "chart chart chart chart"
+        "synthesis directive intel intel"
+        "ops ops history history";
 }
 
 /* Panel placement on the new grid */
