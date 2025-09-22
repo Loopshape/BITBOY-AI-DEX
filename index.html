@@ -32,6 +32,9 @@
                     <div id="status-light" class="status-light"></div>
                     <span id="ai-status-text">SYSTEM ONLINE</span>
                 </div>
+                <div id="wallet-connector">
+                    <!-- WalletConnect button/info will be injected here -->
+                </div>
             </div>
         </header>
 
@@ -66,7 +69,7 @@
                 <div class="intel-grid">
                      <div class="data-point">
                         <h3>24H Volume</h3>
-                        <p>$45.2B</p>
+                        <p id="data-point-volume">$0.0M</p>
                     </div>
                      <div class="data-point">
                         <h3>Dominance</h3>
@@ -79,6 +82,12 @@
                      <div class="data-point">
                         <h3>Sentiment</h3>
                         <p class="positive">GREED</p>
+                    </div>
+                </div>
+                <div id="sentiment-analysis-container">
+                    <h3 class="sentiment-title">SENTIMENT ANALYSIS</h3>
+                    <div id="sentiment-output">
+                        <!-- Sentiment analysis will be injected here -->
                     </div>
                 </div>
                 <h3 class="news-title">LATEST INTEL FEED</h3>
@@ -148,6 +157,20 @@
         </main>
     </div>
     <div id="notification-container"></div>
+
+    <!-- Chart Data Point Modal -->
+    <div id="chart-data-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title" class="modal-title-text">CANDLESTICK DATA</h2>
+                <button id="modal-close-btn" class="modal-close-btn" aria-label="Close modal">&times;</button>
+            </div>
+            <div id="modal-body" class="modal-body">
+                <!-- Data will be injected here by JS -->
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="index.tsx"></script>
 </body>
 </html>

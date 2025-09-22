@@ -50,6 +50,15 @@ interface TradeHistoryEntry {
     timestamp: string;
 }
 
+interface ChartDataPoint {
+    x: number; // openTime
+    o: number; // open
+    h: number; // high
+    l: number; // low
+    c: number; // close
+    v: number; // volume
+}
+
 
 // --- MOCK DATA & CONFIG ---
 const API_KEY = process.env.API_KEY;
@@ -69,6 +78,25 @@ const JSON_SCHEMA = {
         reasoning: { type: Type.STRING, description: "A brief justification for the trade" },
     },
     required: ["asset", "action", "entry", "target", "stopLoss", "reasoning"],
+};
+
+const SENTIMENT_SCHEMA = {
+    type: Type.OBJECT,
+    properties: {
+        overallSentiment: {
+            type: Type.STRING,
+            enum: ["POSITIVE", "NEGATIVE", "NEUTRAL"],
+            description: "The overall sentiment of the news headlines."
+        },
+        keyTerms: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.STRING
+            },
+            description: "A list of 3-5 key terms or short phrases that contributed most to the sentiment."
+        }
+    },
+    required: ["overallSentiment", "keyTerms"]
 };
 
 const PERSONAS: Persona[] = [
@@ -133,9 +161,9 @@ let activeTrade: ActiveTrade | null = null;
 let tradeHistory: TradeHistoryEntry[] = [];
 let logEntries: LogEntry[] = [];
 const MAX_LOG_ENTRIES = 100;
-let priceData: { x: number; y: number; }[] = [];
+let priceData: ChartDataPoint[] = [];
 let marketChart: any = null;
-let priceUpdateInterval: number | undefined;
+let priceUpdaterInterval: number | undefined;
 
 // Chart Drawing State
 let drawingMode: 'trendline' | 'annotation' | null = null;
@@ -143,6 +171,9 @@ let trendlineStartPoint: { x: number, y: number } | null = null;
 let userAnnotations: any = {};
 let annotationCounter = 0;
 
+// WalletConnect State
+let web3Modal: any = null;
+let walletAddress: string | null = null;
 
 // --- PERSISTENCE ---
 const saveState = () => {
@@ -156,6 +187,8 @@ const saveState = () => {
       activeTrade,
       currentDirective,
       ollamaModel,
+      userAnnotations,
+      annotationCounter,
     };
     localStorage.setItem('aiBitboyState', JSON.stringify(stateToSave));
   } catch (error) {
@@ -163,12 +196,12 @@ const saveState = () => {
   }
 };
 
-const loadState = () => {
+const loadState = (): boolean => {
   const savedStateJSON = localStorage.getItem('aiBitboyState');
   if (savedStateJSON) {
     try {
         const savedState = JSON.parse(savedStateJSON);
-        if(!savedState) return;
+        if(!savedState) return false;
 
         selectedPersonaId = savedState.selectedPersonaId || PERSONAS[0].id;
         selectedProviderId = savedState.selectedProviderId || 'gemini';
@@ -178,17 +211,47 @@ const loadState = () => {
         activeTrade = savedState.activeTrade || null;
         currentDirective = savedState.currentDirective || null;
         ollamaModel = savedState.ollamaModel || 'llama3';
+        userAnnotations = savedState.userAnnotations || {};
+        annotationCounter = savedState.annotationCounter || 0;
+        return true;
     } catch (error) {
         console.error("Failed to load state from localStorage:", error);
         localStorage.removeItem('aiBitboyState'); // Clear corrupted state
+        return false;
     }
   }
+  return false;
 };
 
 
 // --- UI ELEMENT GETTERS ---
 const getElem = <T extends HTMLElement>(selector: string): T => document.querySelector(selector) as T;
 const getElems = <T extends HTMLElement>(selector: string): NodeListOf<T> => document.querySelectorAll(selector);
+
+// --- API & DATA FETCHING ---
+const fetchInitialChartData = async (symbol = 'BTCUSDT', interval = '1h', limit = 200): Promise<ChartDataPoint[]> => {
+    try {
+        addLog('Fetching historical market data from Binance...');
+        const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
+        if (!response.ok) throw new Error(`Binance API error: ${response.statusText}`);
+        const klines = await response.json();
+        // kline format: [openTime, open, high, low, close, volume, ...]
+        addLog('Historical data received.');
+        return klines.map((k: any[]) => ({
+            x: k[0],
+            o: parseFloat(k[1]),
+            h: parseFloat(k[2]),
+            l: parseFloat(k[3]),
+            c: parseFloat(k[4]),
+            v: parseFloat(k[5]),
+        }));
+    } catch (error: any) {
+        console.error("Failed to fetch initial chart data:", error);
+        addLog(`Failed to fetch chart data: ${error.message}`, 'error');
+        showNotification('Could not load live chart data.', 'error');
+        return [];
+    }
+};
 
 // --- UI UPDATE & RENDERING FUNCTIONS ---
 
@@ -312,6 +375,17 @@ const renderNews = () => {
     feed.innerHTML = MOCK_NEWS.map(item => `<div class="news-item">${item}</div>`).join('');
 };
 
+const renderSentiment = (sentiment: "POSITIVE" | "NEGATIVE" | "NEUTRAL", keywords: string[]) => {
+    const sentimentOutput = getElem('#sentiment-output');
+    const sentimentClass = sentiment.toLowerCase();
+    const keywordsHtml = keywords.map(kw => `<span class="keyword-tag">${kw}</span>`).join('');
+
+    sentimentOutput.innerHTML = `
+        <span class="sentiment-tag ${sentimentClass}">${sentiment}</span>
+        ${keywordsHtml}
+    `;
+};
+
 const updateAIStatus = (text: string, isError = false, isWorking = false) => {
     const statusText = getElem('#ai-status-text');
     const statusLight = getElem('#status-light');
@@ -416,16 +490,115 @@ const renderInitialDirectivePanel = () => {
     updateAIStatus('AWAITING DIRECTIVE');
 };
 
+
+// --- WALLETCONNECT ---
+const disconnectWallet = async () => {
+    if (web3Modal) {
+        await web3Modal.disconnect();
+    }
+    walletAddress = null;
+    addLog('Wallet disconnected.');
+    renderWalletConnector();
+};
+
+const renderWalletConnector = () => {
+    const container = getElem('#wallet-connector');
+    if (walletAddress) {
+        const truncatedAddress = `${walletAddress.substring(0, 6)}...${walletAddress.substring(walletAddress.length - 4)}`;
+        container.innerHTML = `
+            <div class="wallet-info">
+                <span class="wallet-address" title="${walletAddress}">${truncatedAddress}</span>
+                <button id="disconnect-wallet-btn" class="btn-icon" aria-label="Disconnect Wallet" title="Disconnect Wallet">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
+        `;
+        getElem('#disconnect-wallet-btn').addEventListener('click', disconnectWallet);
+    } else {
+        container.innerHTML = `
+            <button id="connect-wallet-btn">
+                <i class="fas fa-wallet"></i> CONNECT WALLET
+            </button>
+        `;
+        getElem('#connect-wallet-btn').addEventListener('click', () => web3Modal?.open());
+    }
+};
+
+const initializeWalletConnect = () => {
+    // IMPORTANT: Replace with your own projectId from https://cloud.walletconnect.com
+    const projectId = '1a2b3c4d5e6f7g8h9i0j0k1l2m3n4o5p6q7r'; // THIS IS A PLACEHOLDER
+
+    if (!projectId || projectId === '1a2b3c4d5e6f7g8h9i0j0k1l2m3n4o5p6q7r') {
+        const msg = 'WalletConnect projectId not set. Please get a valid ID from cloud.walletconnect.com';
+        console.warn(msg);
+        addLog(msg, 'error');
+        getElem('#wallet-connector').innerHTML = `<span class="wallet-address">WC Not Configured</span>`;
+        return;
+    }
+
+    const chains = [{
+        chainId: 1,
+        name: 'Ethereum',
+        currency: 'ETH',
+        explorerUrl: 'https://etherscan.io',
+        rpcUrl: 'https://cloudflare-eth.com'
+    }];
+    
+    // Prioritize wallets requested by the user, IDs from https://walletconnect.com/explorer
+    const explorerRecommendedWalletIds = [
+      '1ae92b26df02f0abca6304df07deb48179f9f484fa8e3babce58e348037386d3', // Exodus
+      '4622a2b2d6af1c9844944291e5e7351a6aa24cd7b23099efac1b2fd875da31a0', // Trust Wallet
+    ];
+
+    web3Modal = new Web3Modal.Standalone({ projectId, chains, explorerRecommendedWalletIds });
+
+    web3Modal.on('connect', (session: { address?: string }) => {
+        if (session.address) {
+            walletAddress = session.address;
+            addLog(`Wallet connected: ${walletAddress}`);
+            showNotification('Wallet Connected!', 'success');
+            renderWalletConnector();
+        }
+    });
+
+    web3Modal.on('disconnect', () => {
+        walletAddress = null;
+        addLog('Wallet disconnected.');
+        showNotification('Wallet Disconnected', 'success');
+        renderWalletConnector();
+    });
+
+    // Check for existing session
+    if (web3Modal.getIsConnected()) {
+        walletAddress = web3Modal.getAddress();
+        if (walletAddress) {
+            addLog(`Restored wallet connection: ${walletAddress}`);
+        }
+    }
+};
+
+
 // --- CORE LOGIC & EVENT HANDLERS ---
 
 const validateDirective = (data: any): { isValid: boolean, error?: string } => {
     const requiredKeys: (keyof TradeDirective)[] = ["asset", "action", "entry", "target", "stopLoss", "reasoning"];
-    for (const key of requiredKeys) {
-        if (!(key in data)) return { isValid: false, error: `Missing key: ${key}` };
+    const missingKeys = requiredKeys.filter(key => !(key in data));
+    
+    if (missingKeys.length > 0) {
+        return { isValid: false, error: `Response is missing required field(s): ${missingKeys.join(', ')}` };
     }
+
     if (data.action !== "LONG" && data.action !== "SHORT") {
-        return { isValid: false, error: `Invalid action: ${data.action}` };
+        return { isValid: false, error: `Invalid value for 'action': received '${data.action}', expected 'LONG' or 'SHORT'.` };
     }
+
+    const numericKeys: (keyof TradeDirective)[] = ['entry', 'target', 'stopLoss'];
+    for (const key of numericKeys) {
+        if (typeof data[key] !== 'number') {
+            return { isValid: false, error: `Invalid type for '${key}': received '${typeof data[key]}', expected 'number'.` };
+        }
+    }
+
     return { isValid: true };
 };
 
@@ -435,6 +608,40 @@ const applyManualOverrides = () => {
     const slOverride = parseFloat(getElem<HTMLInputElement>('#manual-sl-input').value);
     if (!isNaN(tpOverride) && tpOverride > 0) currentDirective.target = tpOverride;
     if (!isNaN(slOverride) && slOverride > 0) currentDirective.stopLoss = slOverride;
+};
+
+const analyzeNewsSentiment = async () => {
+    const sentimentOutput = getElem('#sentiment-output');
+    sentimentOutput.innerHTML = `<div class="sentiment-output-placeholder">Analyzing feed...</div>`;
+    addLog('Initiating sentiment analysis of news feed...');
+
+    try {
+        const newsContent = MOCK_NEWS.join(' ');
+        const prompt = `Analyze the sentiment of the following financial news headlines and provide an overall sentiment and key contributing terms. Headlines: "${newsContent}"`;
+
+        const response: GenerateContentResponse = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: SENTIMENT_SCHEMA,
+            },
+        });
+
+        addLog('Sentiment analysis response received.', 'ai-analysis');
+        const sentimentData = JSON.parse(response.text.trim());
+
+        if (!sentimentData.overallSentiment || !Array.isArray(sentimentData.keyTerms)) {
+            throw new Error("Invalid sentiment data structure from AI.");
+        }
+
+        renderSentiment(sentimentData.overallSentiment, sentimentData.keyTerms);
+
+    } catch (error: any) {
+        console.error("Sentiment analysis failed:", error);
+        addLog(`Error during sentiment analysis: ${error.message}`, 'error');
+        sentimentOutput.innerHTML = `<div class="sentiment-output-error">Analysis failed.</div>`;
+    }
 };
 
 const testOllamaConnection = async () => {
@@ -463,7 +670,7 @@ const testOllamaConnection = async () => {
     } catch (error) {
         console.error('Ollama connection test failed:', error);
         showNotification('Ollama connection failed. Check server is running.', 'error');
-        addLog('Ollama connection test failed. Ensure server is running and accessible (check CORS).', 'error');
+        addLog('Ollama connection failed. Ensure the server is running and CORS is configured for browser access. You may need to set the OLLAMA_ORIGINS environment variable before starting the Ollama server.', 'error');
     } finally {
         testBtn.disabled = false;
         testBtn.textContent = 'Test';
@@ -484,6 +691,7 @@ const generateDirective = async () => {
     addLog(`Engaging ${selectedProviderId.toUpperCase()} with ${selectedPersona.name} persona...`);
 
     let directiveJson: any;
+    let rawResponseText: string | undefined;
 
     try {
         const prompt = `Analyze the current market conditions and provide a trade directive. Current news: ${MOCK_NEWS.join(' ')}`;
@@ -500,8 +708,7 @@ const generateDirective = async () => {
                 },
             });
             addLog(`AI analysis complete. Parsing response...`, 'ai-analysis');
-            const jsonText = response.text.trim();
-            directiveJson = JSON.parse(jsonText);
+            rawResponseText = response.text.trim();
         } else if (selectedProviderId === 'ollama') {
             addLog(`Connecting to local Ollama instance with model: ${ollamaModel}...`);
             try {
@@ -528,11 +735,11 @@ const generateDirective = async () => {
                 }
 
                 addLog(`Ollama analysis complete. Parsing response...`, 'ai-analysis');
-                directiveJson = JSON.parse(ollamaResult.response);
+                rawResponseText = ollamaResult.response;
 
             } catch (fetchError: any) {
                  if (fetchError.message.includes('Failed to fetch')) {
-                     throw new Error('Connection to local Ollama instance failed. Ensure it is running and accessible from the browser (check CORS settings if running in a container).');
+                     throw new Error('Connection to local Ollama instance failed. Ensure it is running and CORS is configured for browser access. You may need to set the OLLAMA_ORIGINS environment variable before starting the Ollama server.');
                  }
                  throw fetchError; // Re-throw other errors
             }
@@ -540,9 +747,22 @@ const generateDirective = async () => {
             throw new Error(`Unsupported AI provider: ${selectedProviderId}`);
         }
 
+        if (!rawResponseText) {
+            throw new Error("AI provider returned an empty response.");
+        }
+
+        try {
+            directiveJson = JSON.parse(rawResponseText);
+        } catch (parseError) {
+            addLog(`Raw AI Response:\n${rawResponseText}`, 'error');
+            throw new Error(
+                'AI response was not valid JSON. This can happen if the model includes explanatory text or if the request is unfulfillable. Check the logs for the raw response.'
+            );
+        }
+
         const { isValid, error } = validateDirective(directiveJson);
         if (!isValid) {
-            throw new Error(`AI response validation failed: ${error}`);
+            throw new Error(`AI response validation failed: ${error} The JSON structure is correct, but required data is missing or invalid.`);
         }
         
         updateAIStatus('DIRECTIVE RECEIVED');
@@ -562,7 +782,7 @@ const generateDirective = async () => {
                 <p class="error-subtext">Check logs for more details.</p>
             </div>`;
         showNotification('Directive generation failed.', 'error');
-        setTimeout(renderInitialDirectivePanel, 3000);
+        setTimeout(renderInitialDirectivePanel, 5000);
     } 
 };
 
@@ -573,11 +793,13 @@ const executeTrade = () => {
         ...currentDirective,
         allocation: allocation / 100, // as a factor
     };
+    // Set initial price from the last known chart price
+    activeTrade.currentPrice = priceData.length > 0 ? priceData[priceData.length - 1].c : activeTrade.entry;
+    
     currentDirective = null;
     addLog(`Executing ${activeTrade.action} on ${activeTrade.asset} at ${activeTrade.entry} with ${allocation}% allocation.`);
     showNotification(`Trade Executed: ${activeTrade.action} ${activeTrade.asset}`, 'success');
     renderActiveTrade();
-    startPriceSimulation();
     saveState();
 };
 
@@ -602,62 +824,115 @@ const closeTrade = (closePrice: number) => {
     showNotification(`Trade Closed. PnL: ${pnl.toFixed(2)} USD`, 'success');
 
     activeTrade = null;
-    stopPriceSimulation();
     renderTradeHistory();
     renderInitialDirectivePanel();
     saveState();
 };
 
-const startPriceSimulation = () => {
-    if (!activeTrade) return;
-    priceUpdateInterval = window.setInterval(() => {
-        if (!activeTrade) {
-            stopPriceSimulation();
-            return;
-        }
-        let currentPrice = activeTrade.currentPrice || activeTrade.entry;
-        const volatility = 0.0005; // Simulate 0.05% price fluctuation
-        const change = (Math.random() - 0.5) * currentPrice * volatility;
-        currentPrice += change;
-        activeTrade.currentPrice = currentPrice;
-        
-        // Check for TP/SL hit
-        if (activeTrade.action === 'LONG' && currentPrice >= activeTrade.target) {
-            addLog(`Take profit hit for ${activeTrade.asset}!`);
-            closeTrade(activeTrade.target);
-        } else if (activeTrade.action === 'LONG' && currentPrice <= activeTrade.stopLoss) {
-            addLog(`Stop loss hit for ${activeTrade.asset}.`, 'error');
-            closeTrade(activeTrade.stopLoss);
-        } else if (activeTrade.action === 'SHORT' && currentPrice <= activeTrade.target) {
-            addLog(`Take profit hit for ${activeTrade.asset}!`);
-            closeTrade(activeTrade.target);
-        } else if (activeTrade.action === 'SHORT' && currentPrice >= activeTrade.stopLoss) {
-            addLog(`Stop loss hit for ${activeTrade.asset}.`, 'error');
-            closeTrade(activeTrade.stopLoss);
-        } else {
-             renderActiveTrade(); // Only render if trade is still active
-        }
+const startLivePriceUpdates = () => {
+    if (priceUpdaterInterval) return; // Already running
 
-    }, 1000);
+    priceUpdaterInterval = window.setInterval(async () => {
+        try {
+            const response = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT');
+            if (!response.ok) {
+                // Silently fail to avoid spamming logs/notifications on temporary network issues
+                console.warn(`Failed to fetch live price: ${response.statusText}`);
+                return;
+            }
+            const data = await response.json();
+            const currentPrice = parseFloat(data.lastPrice);
+
+            // Update chart data
+            if (marketChart && priceData.length > 0) {
+                // Just update the last point for a real-time feel
+                priceData[priceData.length - 1].c = currentPrice;
+                marketChart.data.datasets[0].data = priceData;
+                marketChart.update('none'); // Update without animation for smoothness
+            }
+
+            // Update 24h Volume in the UI
+            const volumeEl = getElem('#data-point-volume');
+            if (volumeEl) {
+                const volumeInMillions = (parseFloat(data.quoteVolume) / 1_000_000).toFixed(1);
+                volumeEl.textContent = `$${volumeInMillions}M`;
+            }
+
+            // Update active trade if it exists
+            if (activeTrade) {
+                activeTrade.currentPrice = currentPrice;
+                
+                // Check for TP/SL hit
+                if (activeTrade.action === 'LONG' && currentPrice >= activeTrade.target) {
+                    addLog(`Take profit hit for ${activeTrade.asset}!`);
+                    closeTrade(activeTrade.target);
+                } else if (activeTrade.action === 'LONG' && currentPrice <= activeTrade.stopLoss) {
+                    addLog(`Stop loss hit for ${activeTrade.asset}.`, 'error');
+                    closeTrade(activeTrade.stopLoss);
+                } else if (activeTrade.action === 'SHORT' && currentPrice <= activeTrade.target) {
+                    addLog(`Take profit hit for ${activeTrade.asset}!`);
+                    closeTrade(activeTrade.target);
+                } else if (activeTrade.action === 'SHORT' && currentPrice >= activeTrade.stopLoss) {
+                    addLog(`Stop loss hit for ${activeTrade.asset}.`, 'error');
+                    closeTrade(activeTrade.stopLoss);
+                } else {
+                     renderActiveTrade(); // Only render if trade is still active
+                }
+            }
+
+        } catch (error) {
+            // Also silent fail here
+            console.warn("Error fetching live price:", error);
+        }
+    }, 3000); // Fetch every 3 seconds for a responsive feel
 };
-
-const stopPriceSimulation = () => {
-    if(priceUpdateInterval) clearInterval(priceUpdateInterval);
-    priceUpdateInterval = undefined;
-}
 
 // --- CHARTING ---
 
-const generateMockPriceData = (numPoints = 200, initialPrice = 68000, volatility = 0.01) => {
-    const data = [];
-    let price = initialPrice;
-    const now = new Date();
-    for (let i = numPoints - 1; i >= 0; i--) {
-        const timestamp = dateFns.subHours(now, i).getTime();
-        data.push({ x: timestamp, y: price });
-        price += (Math.random() - 0.5) * (price * volatility);
-    }
-    return data;
+const showDataPointModal = (dataPoint: ChartDataPoint) => {
+    const modal = getElem('#chart-data-modal');
+    const modalBody = getElem('#modal-body');
+    const change = dataPoint.c - dataPoint.o;
+    const changePercent = (change / dataPoint.o) * 100;
+
+    modalBody.innerHTML = `
+        <div class="data-detail-row">
+            <span class="label">Time</span>
+            <span class="value">${dateFns.format(new Date(dataPoint.x), 'MMM dd, yyyy HH:mm:ss')}</span>
+        </div>
+        <div class="data-detail-row">
+            <span class="label">Open</span>
+            <span class="value">${dataPoint.o.toFixed(2)}</span>
+        </div>
+        <div class="data-detail-row">
+            <span class="label">High</span>
+            <span class="value">${dataPoint.h.toFixed(2)}</span>
+        </div>
+        <div class="data-detail-row">
+            <span class="label">Low</span>
+            <span class="value">${dataPoint.l.toFixed(2)}</span>
+        </div>
+        <div class="data-detail-row">
+            <span class="label">Close</span>
+            <span class="value">${dataPoint.c.toFixed(2)}</span>
+        </div>
+        <div class="data-detail-row">
+            <span class="label">Change</span>
+            <span class="value ${change >= 0 ? 'positive' : 'negative'}">
+                ${change.toFixed(2)} (${changePercent.toFixed(2)}%)
+            </span>
+        </div>
+        <div class="data-detail-row">
+            <span class="label">Volume</span>
+            <span class="value">${dataPoint.v.toFixed(2)}</span>
+        </div>
+    `;
+
+    modal.classList.add('show');
+};
+
+const closeDataPointModal = () => {
+    getElem('#chart-data-modal').classList.remove('show');
 };
 
 const handleChartClick = (evt: any) => {
@@ -686,6 +961,7 @@ const handleChartClick = (evt: any) => {
             marketChart.update();
             addLog('Trendline created.');
             trendlineStartPoint = null;
+            saveState();
             setDrawingMode(null);
         }
     } else if (drawingMode === 'annotation') {
@@ -706,16 +982,32 @@ const handleChartClick = (evt: any) => {
             marketChart.options.plugins.annotation.annotations = userAnnotations;
             marketChart.update();
             addLog(`Annotation added: "${text}"`);
+            saveState();
         }
         setDrawingMode(null);
     }
 };
 
-const initializeChart = () => {
+const chartClickHandler = (evt: any, elements: any[]) => {
+    // If drawing mode is active, let the drawing handler take precedence.
+    if (drawingMode) {
+        handleChartClick(evt);
+        return;
+    }
+
+    // If not drawing and a data point was clicked, show the modal.
+    if (elements.length > 0) {
+        const firstPoint = elements[0];
+        const dataPoint = marketChart.data.datasets[firstPoint.datasetIndex].data[firstPoint.index] as ChartDataPoint;
+        showDataPointModal(dataPoint);
+    }
+};
+
+const initializeChart = async () => {
     const ctx = getElem<HTMLCanvasElement>('#marketChart').getContext('2d');
     if (!ctx) return;
     
-    priceData = generateMockPriceData();
+    priceData = await fetchInitialChartData();
 
     const chartConfig = {
         type: 'line',
@@ -723,6 +1015,9 @@ const initializeChart = () => {
             datasets: [{
                 label: 'BTC/USD',
                 data: priceData,
+                parsing: {
+                    yAxisKey: 'c' // Use the 'c' (close) property for the y-axis
+                },
                 borderColor: '#66D9EF', // accent-cyan
                 backgroundColor: 'rgba(102, 217, 239, 0.1)',
                 borderWidth: 2,
@@ -756,7 +1051,23 @@ const initializeChart = () => {
                     backgroundColor: '#272822', // bg-dark
                     titleFont: { family: 'Roboto Mono' },
                     bodyFont: { family: 'Roboto Mono' },
-                    padding: 10
+                    padding: 10,
+                    callbacks: {
+                        title: function(context: any[]) {
+                            const date = new Date(context[0].parsed.x);
+                            return dateFns.format(date, 'MMM dd, yyyy HH:mm');
+                        },
+                        label: function(context: any) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+                            }
+                            return label;
+                        }
+                    }
                 },
                 zoom: {
                     pan: { enabled: true, mode: 'xy' },
@@ -766,7 +1077,7 @@ const initializeChart = () => {
                     annotations: userAnnotations
                 }
             },
-            onClick: handleChartClick
+            onClick: chartClickHandler
         }
     };
     
@@ -838,32 +1149,49 @@ const setupEventListeners = () => {
         marketChart.update();
         addLog('Cleared all drawings from chart.');
         setDrawingMode(null);
+        saveState();
+    });
+
+    // Modal controls
+    const modal = getElem('#chart-data-modal');
+    getElem('#modal-close-btn').addEventListener('click', closeDataPointModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            closeDataPointModal();
+        }
     });
 };
 
-const initializeApp = () => {
-    loadState();
+const initializeApp = async () => {
+    const stateLoaded = loadState();
 
     addLog('AI-BITBOY-DEX Strategic Synthesis Core initialized.');
+    if (stateLoaded) {
+        addLog('Previous session settings restored.');
+    }
+    
     getElem<HTMLInputElement>('#allocation-slider').value = String(allocation);
     getElem('#allocation-value').textContent = `${allocation}%`;
     
+    initializeWalletConnect();
+    renderWalletConnector();
     renderPersonas();
     renderAiProviders();
     renderNews();
+    analyzeNewsSentiment();
     renderOrderBook();
     renderLog();
     renderTradeHistory();
-    initializeChart();
+    await initializeChart();
 
     if (activeTrade) {
         renderActiveTrade();
-        startPriceSimulation();
     } else {
         renderInitialDirectivePanel();
     }
 
     setupEventListeners();
+    startLivePriceUpdates();
 };
 
 
