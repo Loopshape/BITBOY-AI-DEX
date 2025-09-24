@@ -1,4 +1,185 @@
 #!/usr/bin/env bash
+# ~/bin/aic - All-in-One AI Agent Shell
+# Features: Live verbose thinking, async brainstorming, synthesis, memory, git sync
+
+set -euo pipefail
+IFS=$'\n\t'
+
+# -------------------- CONFIG --------------------
+AI_HOME="${AI_HOME:-$HOME/.ai_agent}"
+PROJECTS_DIR="${PROJECTS_DIR:-$HOME/ai_projects}"
+GIT_DIR="$HOME/.ai_builder"
+GIT_REPO="git@github.com:Loopshape/BITBOY-AI-DEX.git"
+SSH_KEY="$HOME/.ssh/loopshape_rsa"
+
+DEFAULT_MESSENGER_MODEL="gemma3:1b"
+DEFAULT_COMBINATOR_MODEL="deepseek-r1:1.5b"
+DEFAULT_TRADER_MODEL="2244-1"
+
+OLLAMA_BIN="$(command -v ollama || true)"
+MEMORY_DB="$AI_HOME/memory.db"
+CONFIG_DB="$AI_HOME/config.db"
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; PURPLE='\033[0;35m'; CYAN='\033[0;36m'; NC='\033[0m'
+
+# -------------------- LOGGING --------------------
+log() { printf "${BLUE}[%s]${NC} %s\n" "$(date '+%T')" "$*"; }
+log_success() { log "${GREEN}$*${NC}"; }
+log_warn() { log "${YELLOW}WARN: $*${NC}"; }
+log_error() { log "${RED}ERROR: $*${NC}"; exit 1; }
+log_info() { log "${CYAN}$*${NC}"; }
+log_phase() { echo -e "\n${PURPLE}▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓${NC}"; log "${PURPLE}$*${NC}"; echo -e "${PURPLE}▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓${NC}"; }
+
+# -------------------- SETUP --------------------
+mkdir -p "$AI_HOME" "$PROJECTS_DIR" "$GIT_DIR"
+
+sqlite_escape() { echo "$1" | sed "s/'/''/g"; }
+init_db() {
+    sqlite3 "$MEMORY_DB" "CREATE TABLE IF NOT EXISTS memories (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, prompt TEXT, response TEXT, task_id TEXT);" 2>/dev/null || true
+    sqlite3 "$CONFIG_DB" "CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT);" 2>/dev/null || true
+}
+
+set_config() { sqlite3 "$CONFIG_DB" "INSERT OR REPLACE INTO config (key, value) VALUES ('$(sqlite_escape "$1")','$(sqlite_escape "$2")');" ; log_success "Config set: $1=$2"; }
+get_config() { sqlite3 "$CONFIG_DB" "SELECT value FROM config WHERE key='$(sqlite_escape "$1")';" 2>/dev/null; }
+load_config_values() {
+    MESSENGER_MODEL="$(get_config messenger_model || echo "$DEFAULT_MESSENGER_MODEL")"
+    COMBINATOR_MODEL="$(get_config combinator_model || echo "$DEFAULT_COMBINATOR_MODEL")"
+    TRADER_MODEL="$(get_config trader_model || echo "$DEFAULT_TRADER_MODEL")"
+}
+
+add_to_memory() { sqlite3 "$MEMORY_DB" "INSERT INTO memories (prompt,response,task_id) VALUES ('$(sqlite_escape "$1")','$(sqlite_escape "$2")','$3');" 2>/dev/null; }
+search_memory() { sqlite3 -header -column "$MEMORY_DB" "SELECT timestamp,prompt,response FROM memories WHERE prompt LIKE '%$(sqlite_escape "$1")%' ORDER BY timestamp DESC LIMIT 5;" 2>/dev/null; }
+
+gen_task_id() { echo -n "$1$(date +%s%N)$RANDOM${AI_SEED:-}" | sha256sum | cut -c1-16; }
+
+confirm_action() { echo -e "${YELLOW}CONFIRM: $1${NC}"; read -p "Type 'yes' to confirm: " -r r; [[ "$r" == "yes" ]]; }
+
+tool_read_file() { [[ -f "$1" ]] && cat "$1" || echo "ERROR: File not found: $1"; }
+tool_list_directory() { [[ -d "$1" ]] && tree -L 2 "$1" || echo "ERROR: Directory not found: $1"; }
+tool_web_search() { if confirm_action "Search web for: $1"; then curl -sL "https://html.duckduckgo.com/html/?q=$(jq -nr --arg q "$1" '$q|@uri')" | lynx -dump -stdin -nolist; else echo "ACTION CANCELED"; fi; }
+tool_write_file() { if confirm_action "Write to file: $1"; then mkdir -p "$(dirname "$1")"; echo -e "$2" > "$1"; echo "SUCCESS: File written."; else echo "ACTION CANCELED"; fi; }
+
+ensure_ollama_server() { pgrep -f "ollama serve" >/dev/null || (log "Ollama server starting..."; nohup "$OLLAMA_BIN" serve >/dev/null 2>&1 & sleep 3); }
+
+# -------------------- WORKER --------------------
+run_worker_raw() {
+    local model="$1" system_prompt="$2" conversation_history="$3"
+    ensure_ollama_server
+    local temperature="$(get_config temperature || echo "0.7")"
+    local top_p="$(get_config top_p || echo "0.9")"
+    local seed="$(get_config seed || echo "")"
+    local response_buffer=""
+    local fifo=$(mktemp -u)
+    mkfifo "$fifo"
+
+    ( "$OLLAMA_BIN" run --verbose "$model" --temperature "$temperature" --top-p "$top_p" ${seed:+--seed "$seed"} "$system_prompt"$'\n'"$conversation_history" 2>&1 > "$fifo" ) &
+    local pid=$!
+
+    while IFS= read -r line <"$fifo"; do
+        [[ -z "$line" ]] && continue
+        if [[ "$line" =~ ^\>\>\> ]]; then echo -e "${YELLOW}$line${NC}"
+        elif [[ "$line" =~ ^\{.*\}$ ]]; then
+            token=$(echo "$line" | jq -r '.response? // empty' 2>/dev/null)
+            done_status=$(echo "$line" | jq -r '.done? // false' 2>/dev/null)
+            [[ -n "$token" ]] && { printf '%s' "$token"; response_buffer+="$token"; }
+            [[ "$done_status" == "true" ]] && printf '\n'
+        else
+            echo -e "${BLUE}$line${NC}"
+        fi
+    done
+    wait "$pid" 2>/dev/null || true
+    rm -f "$fifo"
+    echo "$response_buffer"
+}
+
+# -------------------- TRIUMPIRATE AGENT --------------------
+run_triumvirate_agent() {
+    local user_prompt="$*"
+    log_phase "PHASE 0: SETUP & PROJECTION"
+    local task_id=$(gen_task_id "$user_prompt")
+    local task_dir="$PROJECTS_DIR/$task_id"
+    mkdir -p "$task_dir"
+    log_success "Task ID: $task_id"
+    log_info "Workspace: $task_dir"
+
+    local relevant_memories=$(search_memory "$user_prompt")
+
+    log_phase "PHASE 1: ASYNC BRAINSTORMING"
+    local messenger_prompt="You are MESSENGER. Analyze user request: $user_prompt"
+    local combinator_prompt="You are COMBINATOR. Brainstorm solutions: $user_prompt"
+    local messenger_log="$task_dir/messenger.log"
+    local combinator_log="$task_dir/combinator.log"
+
+    run_worker_raw "$MESSENGER_MODEL" "$messenger_prompt" "$relevant_memories" > "$messenger_log" 2>&1 &
+    local m_pid=$!
+    run_worker_raw "$COMBINATOR_MODEL" "$combinator_prompt" "$relevant_memories" > "$combinator_log" 2>&1 &
+    local c_pid=$!
+
+    spinner='/-\|'; printf "${CYAN}Brainstorming...${NC}"; i=0
+    while kill -0 "$m_pid" 2>/dev/null || kill -0 "$c_pid" 2>/dev/null; do
+        printf "\b%s" "${spinner:i++%${#spinner}:1}"; sleep 0.1
+    done
+    printf "\b Done.\n"
+
+    messenger_response=$(<"$messenger_log")
+    combinator_response=$(<"$combinator_log")
+
+    log_phase "PHASE 2: SYNTHESIS & EXECUTION"
+    local trader_prompt="You are TRADER. Merge messenger & combinator info for final answer.
+---MESSENGER---
+$messenger_response
+---COMBINATOR---
+$combinator_response
+---FINAL ANSWER---"
+
+    trader_response=$(run_worker_raw "$TRADER_MODEL" "$trader_prompt" "$relevant_memories")
+
+    log_phase "PHASE 3: FINALIZATION"
+    if echo "$trader_response" | grep -q '\[FINAL_ANSWER\]'; then
+        log_success "Trader produced final answer"
+        add_to_memory "$user_prompt" "$trader_response" "$task_id"
+    else
+        log_warn "Trader did not produce [FINAL_ANSWER]"
+    fi
+
+    echo "$trader_response"
+}
+
+# -------------------- GIT SYNC --------------------
+git_pull_push() {
+    [[ ! -d "$GIT_DIR/.git" ]] && git clone "$GIT_REPO" "$GIT_DIR"
+    cd "$GIT_DIR"
+    GIT_SSH_COMMAND="ssh -i $SSH_KEY -o StrictHostKeyChecking=no" git pull origin main
+    git add . && git commit -m "Auto commit $(date '+%F %T')" || true
+    GIT_SSH_COMMAND="ssh -i $SSH_KEY -o StrictHostKeyChecking=no" git push origin main
+}
+
+# -------------------- MAIN --------------------
+main() {
+    init_db
+    load_config_values
+
+    [[ $# -eq 0 ]] && { echo "Usage: aic \"Your prompt here\""; exit 0; }
+
+    case "$1" in
+        --setup)
+            sudo apt-get update && sudo apt-get install -y sqlite3 jq curl tree lynx
+            ;;
+        --git)
+            git_pull_push
+            ;;
+        *)
+            run_triumvirate_agent "$*"
+            ;;
+    esac
+}
+
+trap 'log_warn "Interrupted"; exit 1' INT TERM
+[[ "${BASH_SOURCE[0]}" == "${0}" ]] && main "$@"
+
+exit 0
+
+#!/usr/bin/env bash
 # ai.sh - AI DevOps Platform v8.1 - Adaptive Triumvirate Mind Edition
 # Full single-file Bash implementation for advanced AI agent operations.
 
