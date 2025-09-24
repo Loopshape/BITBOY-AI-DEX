@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# AI DevOps Platform v10 - Bulletproof Verbose Edition
+# AI DevOps Platform v8.1 - Bulletproof Verbose Edition
+# Single-file implementation with comprehensive error handling and verbose logging
 
 set -euo pipefail
 IFS=$'\n\t'
