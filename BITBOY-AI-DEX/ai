@@ -19,9 +19,9 @@ DEFAULT_COMBINATOR_MODEL="deepseek-r1:1.5b"
 DEFAULT_TRADER_MODEL="2244-1"
 
 # Initialize with defaults
-MESSENGER_MODEL=""
-COMBINATOR_MODEL=""
-TRADER_MODEL=""
+MESSENGER_MODEL="2244-1"
+COMBINATOR_MODEL="gemma3:1b"
+TRADER_MODEL="deepseek-r1:1.5b"
 
 OLLAMA_BIN="$(command -v ollama || true)"
 MEMORY_DB="$AI_HOME/memory.db"
