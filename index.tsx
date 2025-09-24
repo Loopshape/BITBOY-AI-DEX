@@ -117,6 +117,24 @@ const PERSONAS: Persona[] = [
     name: 'Degen',
     icon: 'fa-solid fa-rocket',
     systemInstruction: 'You are a high-risk, high-reward "degen" trader. You look for explosive, meme-driven opportunities. Your analysis is based on social media sentiment, hype, and narratives. You are not afraid of high volatility and aim for moonshot trades. Justify your trades with narrative and sentiment, not just technicals.'
+  },
+  {
+    id: 'daytrader',
+    name: 'Day Trader',
+    icon: 'fa-solid fa-calendar-day',
+    systemInstruction: 'You are a disciplined day trader. Your focus is on capturing profits from intraday price movements. Analyze 15-minute and 1-hour charts for patterns like flags, triangles, and head-and-shoulders. Use VWAP and key intraday support/resistance levels to determine entry and exit points. Trades should be opened and closed within the same day.'
+  },
+  {
+    id: 'investor',
+    name: 'Investor',
+    icon: 'fa-solid fa-piggy-bank',
+    systemInstruction: 'You are a long-term value investor. Your perspective spans months to years. Ignore short-term market noise and focus on fundamental analysis, macroeconomic trends, and major market cycles. Your analysis should be based on weekly and monthly charts, identifying deeply undervalued or overvalued conditions for major assets. Your reasoning should reflect a long-term thesis.'
+  },
+  {
+    id: 'quant',
+    name: 'Quant',
+    icon: 'fa-solid fa-calculator',
+    systemInstruction: 'You are a quantitative analyst. Your decisions are purely data-driven, based on statistical models and algorithmic signals. Analyze price action using advanced indicators like Bollinger Bands, Ichimoku Cloud, and Fibonacci retracement levels. Identify statistical arbitrage opportunities and deviations from the mean. Your reasoning must be objective and based on quantitative signals, devoid of emotion or narrative.'
   }
 ];
 
@@ -516,9 +534,15 @@ const renderWalletConnector = () => {
         getElem('#disconnect-wallet-btn').addEventListener('click', disconnectWallet);
     } else {
         container.innerHTML = `
-            <button id="connect-wallet-btn">
-                <i class="fas fa-wallet"></i> CONNECT WALLET
-            </button>
+            <div class="connect-wallet-container">
+                <button id="connect-wallet-btn">
+                    <i class="fas fa-wallet"></i> CONNECT WALLET
+                </button>
+                <div class="recommended-wallets" title="Exodus and Trust Wallet are recommended">
+                    <img src="https://www.exodus.com/img/icons/logo-icon-exodus.svg" alt="Exodus">
+                    <img src="https://trustwallet.com/assets/images/media/assets/logo.svg" alt="Trust Wallet">
+                </div>
+            </div>
         `;
         getElem('#connect-wallet-btn').addEventListener('click', () => web3Modal?.open());
     }
