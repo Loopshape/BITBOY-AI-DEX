@@ -1,153 +1,712 @@
 #!/usr/bin/env bash
-# ~/bin/ai - AI DevOps Platform v8.0 - The Triumvirate Mind Edition
-# A multi-worker cognitive system with advanced hashing and a Gemini evaluation trigger.
+# ai.sh - AI DevOps Platform v8.1 - Adaptive Triumvirate Mind Edition
+# Full single-file Bash implementation for advanced AI agent operations.
 
 set -euo pipefail
 IFS=$'\n\t'
 
-# --- CONFIG ---
-AI_HOME="${AI_HOME:-$HOME/.ai_builder}"
-PROJECTS_DIR="${AI_HOME}/projects"
-# The Three Worker Models
-MESSENGER_MODEL="gemma3:1b"
-COMBINATOR_MODEL="deepseek-r1:1.5b"
-TRADER_MODEL="2244-1" # The mandatory executive model
-OLLAMA_BIN="${OLLAMA_BIN:-$(command -v ollama || true)}"
-CHAIN_LOG="$AI_HOME/chain.log" # Simulated blockchain resonance
-MAX_ITERATIONS=5 # Iterations per worker stage
+# --- CONFIGURATION ---
+AI_HOME="${AI_HOME:-$HOME/.ai_agent}"
+PROJECTS_DIR="${PROJECTS_DIR:-$HOME/ai_projects}"
+
+# Default Worker Models
+DEFAULT_MESSENGER_MODEL="gemma3:1b"
+DEFAULT_COMBINATOR_MODEL="deepseek-r1:1.5b"
+DEFAULT_TRADER_MODEL="2244-1"
+
+# Initialize with defaults - will be overridden by config
+MESSENGER_MODEL="$DEFAULT_MESSENGER_MODEL"
+COMBINATOR_MODEL="$DEFAULT_COMBINATOR_MODEL"
+TRADER_MODEL="$DEFAULT_TRADER_MODEL"
+
+OLLAMA_BIN="$(command -v ollama || true)"
+MEMORY_DB="$AI_HOME/memory.db"
+HASH_INDEX_DB="$AI_HOME/hashes.db"
+POOL_INDEX_DB="$AI_HOME/pool_index.db"
+API_LOGS_DB="$AI_HOME/api_logs.db"
+CONFIG_DB="$AI_HOME/config.db"
+
+API_PORT="${API_PORT:-8080}"
+API_PID_FILE="$AI_HOME/api.pid"
+MAX_AGENT_ITERATIONS=10
+MAX_TRIUMVIRATE_ROUNDS=5
 
 # --- COLORS & LOGGING ---
-C_RESET='\033[0m'; C_BOLD='\033[1m'; C_RED='\033[0;31m'; C_GREEN='\033[0;32m'
-C_YELLOW='\033[0;33m'; C_BLUE='\033[0;34m'; C_CYAN='\033[0;36m'; C_MAGENTA='\033[0;35m'
-log() { printf "${C_BLUE}[%s]${C_RESET} %s\n" "$(date '+%T')" "$*"; }
-log_success() { log "${C_GREEN}$*${C_RESET}"; }
-log_warn() { log "${C_YELLOW}WARN: $*${C_RESET}"; }
-log_error() { log "${C_RED}ERROR: $*${C_RESET}"; exit 1; }
-log_worker() { log "${C_BOLD}${C_MAGENTA}--- WORKER: $1 ---${C_RESET}"; }
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; PURPLE='\033[0;35m'; CYAN='\033[0;36m'; ORANGE='\033[0;33m'; MAGENTA='\033[0;35m'; NC='\033[0m'
+log() { printf "${BLUE}[%s]${NC} %s\\n" "$(date '+%T')" "$*"; }
+log_success() { log "${GREEN}$*${NC}"; }
+log_warn() { log "${YELLOW}WARN: $*${NC}"; }
+log_error() { log "${RED}ERROR: $*${NC}"; exit 1; }
+log_info() { log "${CYAN}$*${NC}"; }
+
+# Thinking stream functions
+think_stream() {
+    local worker_color="$1"
+    local worker_name="$2"
+    local phase="$3"
+    echo -e "${worker_color}🧠 $worker_name $phase...${NC}"
+}
+
+log_worker_start() { 
+    echo -e "\\n${PURPLE}┌────────────────────────────────────────────────────────────┐${NC}"
+    echo -e "${PURPLE}│ 🧠 WORKER: $1 ($2) ${NC}"
+    echo -e "${PURPLE}└────────────────────────────────────────────────────────────┘${NC}"
+}
+log_worker_end() { 
+    echo -e "${PURPLE}════════════════════════════════════════════════════════════${NC}\\n"
+}
 
 # --- BOOTSTRAP ---
 mkdir -p "$AI_HOME" "$PROJECTS_DIR"
-touch "$CHAIN_LOG"
 
-# --- CORE UTILITIES ---
-check_dependencies() { for cmd in "$@"; do if ! command -v "$cmd" >/dev/null; then log_warn "Required command '$cmd' not found."; fi; done; }
-ensure_ollama_server() { if ! pgrep -f "ollama serve" >/dev/null; then log "Ollama server starting..."; nohup "$OLLAMA_BIN" serve >/dev/null 2>&1 & sleep 3; fi; }
-
-# --- NEW: COGNITIVE PROJECTIONS (Hashing) ---
-generate_projection() {
-    local prompt_hash; prompt_hash=$(echo -n "$1" | sha256sum | awk '{print $1}')
-    local time_hash; time_hash=$(echo -n "$(date +%s%N)" | sha256sum | awk '{print $1}')
-    local random_hash; random_hash=$(echo -n "$RANDOM" | sha256sum | awk '{print $1}')
-    local seed_hash="unseeded"
-    if [[ -n "${AI_SEED-}" ]]; then
-        seed_hash=$(echo -n "$AI_SEED" | sha256sum | awk '{print $1}')
+# --- SQLite UTILITIES ---
+sqlite_escape() { echo "$1" | sed "s/'/''/g"; }
+init_db() {
+    if ! command -v sqlite3 &> /dev/null; then
+        log_error "sqlite3 is required. Install with: sudo apt-get install sqlite3 or brew install sqlite"
     fi
-    # Concatenate hashes for the final projection
-    echo -n "${prompt_hash}${time_hash}${random_hash}${seed_hash}" | sha256sum | awk '{print $1}'
+    sqlite3 "$MEMORY_DB" "CREATE TABLE IF NOT EXISTS memories (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, prompt TEXT, response TEXT, pool_hash TEXT, task_hash TEXT);" 2>/dev/null || true
+    sqlite3 "$HASH_INDEX_DB" "CREATE TABLE IF NOT EXISTS hashes (type TEXT, target TEXT, hash TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP);" 2>/dev/null || true
+    sqlite3 "$CONFIG_DB" "CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT);" 2>/dev/null || true
+    sqlite3 "$POOL_INDEX_DB" "CREATE TABLE IF NOT EXISTS pools (pool_hash TEXT PRIMARY KEY, rehash_count INTEGER DEFAULT 0, tasks TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP);" 2>/dev/null || true
+    sqlite3 "$API_LOGS_DB" "CREATE TABLE IF NOT EXISTS api_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, endpoint TEXT, method TEXT, payload TEXT);" 2>/dev/null || true
 }
 
-# --- AGENT TOOLS (Simplified for clarity, used by Messenger) ---
-tool_list_directory() { local p="${1:-.}"; if [[ -d "$p" ]]; then tree -L 2 "$p"; else echo "Error: Dir not found: $p"; fi; }
-tool_web_search() { local q="$*"; curl -sL "https://html.duckduckgo.com/html/?q=$(jq -nr --arg q "$q" '$q|@uri')" | lynx -dump -stdin -nolist; }
+# --- MEMORY MANAGEMENT ---
+add_to_memory() { local p="$1" r="$2" ph="$3" th="$4"; sqlite3 "$MEMORY_DB" "INSERT INTO memories (prompt, response, pool_hash, task_hash) VALUES ('$(sqlite_escape "$p")', '$(sqlite_escape "$r")', '$ph', '$th');" 2>/dev/null; }
+search_memory() { local q="$1" l="${2:-5}"; sqlite3 -header -column "$MEMORY_DB" "SELECT timestamp,prompt,response FROM memories WHERE prompt LIKE '%$(sqlite_escape "$q")%' OR response LIKE '%$(sqlite_escape "$q")%' ORDER BY timestamp DESC LIMIT $l;" 2>/dev/null; }
+clear_memory() { if confirm_action "Clear ALL memory data"; then sqlite3 "$MEMORY_DB" "DELETE FROM memories;"; log_success "Memory cleared."; else log_info "Memory clear cancelled."; fi; }
 
-# --- AGENT CORE (Re-architected for Triumvirate Mind) ---
-run_worker() {
-    local worker_name="$1"
-    local model="$2"
-    local system_prompt="$3"
-    local conversation_history="$4"
+# --- HASHING ---
+hash_string() { echo -n "$1" | sha256sum | cut -d' ' -f1; }
+hash_file_content() { if [[ -f "$1" ]]; then sha256sum "$1" | cut -d' ' -f1; else echo "ERROR: File not found: $1"; return 1; fi; }
+hash_repo_content() { if [[ -d "$1" ]]; then find "$1" -type f ! -path "*/.git/*" -exec cat {} + 2>/dev/null | sha256sum | cut -d' ' -f1; else echo "ERROR: Directory not found: $1"; return 1; fi; }
 
-    log_worker "$worker_name ($model)"
-    echo -e "${C_YELLOW}--- $worker_name Thinking (Live Stream) ---${C_RESET}"
-    ensure_ollama_server
-    local response; response=$("$OLLAMA_BIN" run "$model" "${system_prompt}\n${conversation_history}" 2>&1 | tee /dev/tty)
-    echo -e "${C_YELLOW}--- End of $worker_name Thought ---${C_RESET}"
+record_hash() { local type="$1" target="$2" hash="$3"; sqlite3 "$HASH_INDEX_DB" "INSERT OR REPLACE INTO hashes (type, target, hash) VALUES ('$type', '$(sqlite_escape "$target")', '$hash');"; log_info "Recorded hash for $type:$target -> $hash"; }
+get_hash() { local type="$1" target="$2"; sqlite3 "$HASH_INDEX_DB" "SELECT hash FROM hashes WHERE type='$type' AND target='$(sqlite_escape "$target")';" 2>/dev/null; }
+view_hash_index() { sqlite3 -header -column "$HASH_INDEX_DB" "SELECT * FROM hashes ORDER BY timestamp DESC;" 2>/dev/null || echo "No hashes recorded."; }
+
+# --- CONFIGURATION MANAGEMENT ---
+set_config() { local k="$1" v="$2"; sqlite3 "$CONFIG_DB" "INSERT OR REPLACE INTO config (key, value) VALUES ('$k', '$(sqlite_escape "$v")');"; log_success "Config set: $k = $v"; }
+get_config() { local k="$1"; sqlite3 "$CONFIG_DB" "SELECT value FROM config WHERE key = '$k';" 2>/dev/null; }
+view_config() { sqlite3 -header -column "$CONFIG_DB" "SELECT * FROM config;" 2>/dev/null || echo "No configuration set."; }
+
+load_config_values() {
+    # Use proper default value handling
+    local messenger_config=$(get_config messenger_model)
+    local combinator_config=$(get_config combinator_model)
+    local trader_config=$(get_config trader_model)
+    
+    MESSENGER_MODEL="${messenger_config:-$DEFAULT_MESSENGER_MODEL}"
+    COMBINATOR_MODEL="${combinator_config:-$DEFAULT_COMBINATOR_MODEL}"
+    TRADER_MODEL="${trader_config:-$DEFAULT_TRADER_MODEL}"
+    
+    AI_TEMPERATURE="$(get_config temperature || echo "0.7")"
+    AI_TOP_P="$(get_config top_p || echo "0.9")"
+    AI_SEED="$(get_config seed || echo "")"
+    API_PORT="$(get_config api_port || echo "8080")"
+    
+    log_info "Loaded models: Messenger=$MESSENGER_MODEL, Combinator=$COMBINATOR_MODEL, Trader=$TRADER_MODEL"
+}
+
+# --- TASK POOLING ---
+setup_task_pool() {
+    local prompt="$1"
+    local semantic_hash_val
+    
+    # Use a simpler approach for semantic hashing to avoid model dependency
+    semantic_hash_val=$(echo "$prompt" | tr ' ' '-' | tr -cd 'a-zA-Z0-9-' | cut -c1-16)
+    if [[ -z "$semantic_hash_val" ]]; then
+        semantic_hash_val=$(hash_string "$prompt" | cut -c1-16)
+    fi
+
+    local instance_hash_val=$(hash_string "$prompt$(date +%s%N)" | cut -c1-16)
+
+    local pool_dir="$PROJECTS_DIR/$semantic_hash_val"
+    mkdir -p "$pool_dir"
+
+    local rehash_count=0
+    local tasks_json='[]'
+    local existing_data
+    existing_data=$(sqlite3 "$POOL_INDEX_DB" "SELECT rehash_count, tasks FROM pools WHERE pool_hash = '$semantic_hash_val';" 2>/dev/null || echo "")
+    
+    if [[ -n "$existing_data" ]]; then
+        rehash_count=$(echo "$existing_data" | cut -d'|' -f1)
+        local existing_tasks=$(echo "$existing_data" | cut -d'|' -f2)
+        rehash_count=$((rehash_count + 1))
+        if command -v jq &> /dev/null && [[ -n "$existing_tasks" ]]; then
+            tasks_json=$(echo "$existing_tasks" | jq -c --arg task "$instance_hash_val" '. + [$task]' 2>/dev/null || echo "[\"$instance_hash_val\"]")
+        else
+            tasks_json="[\"$instance_hash_val\"]"
+        fi
+        sqlite3 "$POOL_INDEX_DB" "UPDATE pools SET rehash_count = $rehash_count, tasks = '$(sqlite_escape "$tasks_json")' WHERE pool_hash = '$semantic_hash_val';" 2>/dev/null
+    else
+        rehash_count=1
+        tasks_json="[\"$instance_hash_val\"]"
+        sqlite3 "$POOL_INDEX_DB" "INSERT INTO pools (pool_hash, rehash_count, tasks) VALUES ('$semantic_hash_val', $rehash_count, '$(sqlite_escape "$tasks_json")');" 2>/dev/null
+    fi
+
+    echo "$semantic_hash_val $instance_hash_val $rehash_count"
+}
+
+# --- CORE AGENT TOOLS ---
+confirm_action() {
+    local action="$1"
+    echo -e "${YELLOW}CONFIRM: $action${NC}"
+    read -p "Type 'yes' to confirm: " -r response
+    if [[ "$response" == "yes" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+tool_read_file() { local p="$1"; if [[ -f "$p" ]]; then cat "$p"; else echo "ERROR: File not found: $p"; fi; }
+tool_list_directory() { local p="${1:-.}"; if [[ -d "$p" ]]; then ls -la "$p"; else echo "ERROR: Directory not found: $p"; fi; }
+tool_web_search() { 
+    if ! command -v googler &> /dev/null; then echo "ERROR: googler not installed. Install with: sudo apt-get install googler"; return 1; fi
+    local query="$1"; local count="${2:-3}"
+    if confirm_action "Search web for: $query"; then
+        googler --count "$count" --exact "$query"
+    fi
+}
+tool_read_web_page() { 
+    if ! command -v lynx &> /dev/null; then echo "ERROR: lynx not installed. Install with: sudo apt-get install lynx"; return 1; fi
+    local url="$1"
+    if confirm_action "Read web page: $url"; then
+        lynx -dump "$url"
+    fi
+}
+tool_write_file() { 
+    local path="$1" content="$2"
+    if confirm_action "Write to file: $path"; then
+        mkdir -p "$(dirname "$path")"
+        echo "$content" > "$path"
+        echo "File written: $path"
+    fi
+}
+tool_create_directory() { 
+    local path="$1"
+    if confirm_action "Create directory: $path"; then
+        mkdir -p "$path"
+        echo "Directory created: $path"
+    fi
+}
+tool_copy_file() { 
+    local src="$1" dest="$2"
+    if confirm_action "Copy file: $src to $dest"; then
+        cp "$src" "$dest"
+        echo "File copied: $src -> $dest"
+    fi
+}
+tool_move_file() { 
+    local src="$1" dest="$2"
+    if confirm_action "Move file: $src to $dest"; then
+        mv "$src" "$dest"
+        echo "File moved: $src -> $dest"
+    fi
+}
+tool_delete_file() { 
+    local path="$1"
+    if confirm_action "DELETE file: $path"; then
+        rm "$path"
+        echo "File deleted: $path"
+    fi
+}
+tool_make_web_request() { 
+    local url="$1" method="${2:-GET}" data="${3:-}"
+    if confirm_action "Make $method request to: $url"; then
+        if [[ "$method" == "POST" ]]; then
+            curl -X POST -H "Content-Type: application/json" -d "$data" "$url"
+        else
+            curl "$url"
+        fi
+    fi
+}
+tool_check_port() { 
+    local host="$1" port="$2"
+    if command -v nc &> /dev/null; then
+        nc -z "$host" "$port" && echo "Port $port on $host is open" || echo "Port $port on $host is closed"
+    else
+        echo "ERROR: netcat (nc) not installed"
+    fi
+}
+tool_download_file() { 
+    local url="$1" dest="$2"
+    if confirm_action "Download: $url to $dest"; then
+        wget -O "$dest" "$url"
+        echo "Downloaded: $url -> $dest"
+    fi
+}
+tool_run_command() { 
+    local cmd="$1"
+    local project_root
+    project_root=$(get_config current_project_root || echo ".")
+    
+    if confirm_action "Run command: $cmd (in: $project_root)"; then
+        (cd "$project_root" && eval "$cmd")
+    fi
+}
+
+# --- AI WORKER FUNCTIONS ---
+run_worker_raw() {
+    local worker_name="$1" model="$2" system_prompt="$3" user_prompt="$4"
+    
+    # Validate model parameter
+    if [[ -z "$model" ]]; then
+        log_error "Model parameter is empty for worker: $worker_name"
+    fi
+    
+    local temperature="${AI_TEMPERATURE:-0.7}"
+    local top_p="${AI_TOP_P:-0.9}"
+    local seed="${AI_SEED:-}"
+    
+    # Fixed jq syntax - properly pass model as argument
+    local json_payload
+    json_payload=$(jq -n \
+        --arg model "$model" \
+        --arg system "$system_prompt" \
+        --arg prompt "$user_prompt" \
+        --argjson temp "$temperature" \
+        --argjson top_p "$top_p" \
+        '{
+            model: $model,
+            prompt: $prompt,
+            system: $system,
+            options: {
+                temperature: $temp,
+                top_p: $top_p
+            },
+            stream: true
+        }')
+    
+    if [[ -n "$seed" ]]; then
+        json_payload=$(echo "$json_payload" | jq --argjson seed "$seed" '.options.seed = $seed')
+    fi
+    
+    local response_file
+    response_file=$(mktemp)
+    
+    log_info "🧠 $worker_name starting thought process with model: $model"
+    echo -e "${CYAN}--- Beginning Live Thought Stream ---${NC}"
+    
+    # Stream with phrase buffering for complete thoughts
+    {
+        curl -s -X POST http://localhost:11434/api/generate \
+            -H "Content-Type: application/json" \
+            -d "$json_payload" | \
+        while IFS= read -r line; do
+            # Parse JSON and extract response token
+            local token=$(echo "$line" | jq -r '.response // empty' 2>/dev/null)
+            if [[ -n "$token" ]]; then
+                # Print token immediately for live streaming
+                printf "%s" "$token"
+            fi
+        done
+        printf "\\n"
+    } | tee /dev/tty | {
+        # Buffer to capture complete response
+        local buffer=""
+        while IFS= read -r -n1 char; do
+            printf "%s" "$char"
+            buffer="${buffer}${char}"
+        done
+        echo "$buffer" > "$response_file"
+    }
+    
+    local response
+    response=$(cat "$response_file")
+    rm "$response_file"
+    
+    echo -e "${CYAN}--- End of Thought Stream ---${NC}"
     echo "$response"
 }
 
+run_worker_interactive() {
+    local worker_name="$1" model="$2" system_prompt="$3" user_prompt="$4" context_memories="$5" resonance_info="$6"
+    
+    local full_system_prompt="$system_prompt"
+    if [[ -n "$context_memories" ]]; then
+        full_system_prompt+="\n\nRELEVANT MEMORIES:\n$context_memories"
+        echo -e "${YELLOW}🧠 Accessing relevant memories for context...${NC}"
+    fi
+    if [[ -n "$resonance_info" ]]; then
+        full_system_prompt+="\n\nTASK RESONANCE: This task has been attempted $resonance_info times before. Learn from previous approaches."
+        echo -e "${YELLOW}📊 Task resonance level: $resonance_info previous attempts${NC}"
+    fi
+    
+    log_worker_start "$worker_name" "$model"
+    
+    # Color coding for different workers
+    local worker_color
+    case "$worker_name" in
+        "Messenger") worker_color="$MAGENTA" ;;
+        "Combinator") worker_color="$CYAN" ;;
+        "Trader") worker_color="$GREEN" ;;
+        *) worker_color="$PURPLE" ;;
+    esac
+    
+    think_stream "$worker_color" "$worker_name" "beginning analysis"
+    
+    local response
+    response=$(run_worker_raw "$worker_name" "$model" "$full_system_prompt" "$user_prompt")
+    
+    think_stream "$worker_color" "$worker_name" "completed thought process"
+    log_worker_end
+    
+    echo "$response"
+}
+
+# --- TRIUMVIRATE MIND ARCHITECTURE ---
 run_triumvirate_agent() {
-    local user_prompt="$*"
+    local user_prompt="$1" semantic_hash="$2" instance_hash="$3" rehash_count="$4"
+    
+    local project_dir="$PROJECTS_DIR/$semantic_hash/$instance_hash"
+    mkdir -p "$project_dir"
+    set_config "current_project_root" "$project_dir"
+    
+    local event_log="$project_dir/events.jsonl"
+    local round=0
+    local final_response=""
+    
+    echo -e "\\n${GREEN}🚀 INITIATING TRIUMVIRATE MIND PROCESSING SEQUENCE${NC}"
+    echo -e "${BLUE}📁 Project directory: $project_dir${NC}"
+    echo -e "${BLUE}🔑 Semantic hash: $semantic_hash${NC}"
+    echo -e "${BLUE}🔒 Instance hash: $instance_hash${NC}"
+    echo -e "${BLUE}📊 Resonance count: $rehash_count${NC}"
+    
+    # Search for relevant memories
+    echo -e "${YELLOW}🧠 Searching memory for relevant context...${NC}"
+    local context_memories
+    context_memories=$(search_memory "$user_prompt" 3 2>/dev/null || echo "")
+    local resonance_info="$rehash_count"
+    
+    # Verify models are loaded
+    echo -e "${PURPLE}🤖 Loaded AI Models:${NC}"
+    echo -e "${MAGENTA}   Messenger: $MESSENGER_MODEL${NC} (Analysis)"
+    echo -e "${CYAN}   Combinator: $COMBINATOR_MODEL${NC} (Planning)"
+    echo -e "${GREEN}   Trader: $TRADER_MODEL${NC} (Execution)"
+    
+    while [[ $round -lt $MAX_TRIUMVIRATE_ROUNDS ]]; do
+        round=$((round + 1))
+        echo -e "\\n${ORANGE}🔄 === TRIUMVIRATE ROUND $round/$MAX_TRIUMVIRATE_ROUNDS ===${NC}"
+        
+        # Messenger Phase - Understanding and Analysis
+        echo -e "${MAGENTA}🔍 PHASE 1: MESSENGER ANALYSIS${NC}"
+        local messenger_prompt="You are the MESSENGER. Analyze the user request and break it down into core components.\n\nUSER REQUEST: $user_prompt\n\nAvailable tools: read_file, list_directory, web_search, read_web_page\n\nThink step by step and explain your reasoning in complete sentences. Output format: THOUGHT: [your analysis]\\nACTION: [tool_name] [parameters] or FINAL: [summary]"
+        
+        local messenger_response
+        messenger_response=$(run_worker_interactive "Messenger" "$MESSENGER_MODEL" "$messenger_prompt" "$user_prompt" "$context_memories" "$resonance_info")
+        if command -v jq &> /dev/null; then
+            echo "{\"round\": $round, \"phase\": \"messenger\", \"response\": \"$(echo "$messenger_response" | jq -R -s -c .)\"}" >> "$event_log"
+        else
+            echo "{\"round\": $round, \"phase\": \"messenger\", \"response\": \"$messenger_response\"}" >> "$event_log"
+        fi
+        
+        # Combinator Phase - Planning and Strategy
+        echo -e "${CYAN}📋 PHASE 2: COMBINATOR PLANNING${NC}"
+        local combinator_prompt="You are the COMBINATOR. Create an execution plan based on Messenger's analysis.\n\nMESSENGER ANALYSIS: $messenger_response\n\nUSER REQUEST: $user_prompt\n\nAvailable tools: all tools (read, write, web, commands)\n\nThink step by step and explain your strategic planning in complete sentences. Output format: THOUGHT: [your plan]\\nACTION: [tool_sequence] or FINAL: [execution_plan]"
+        
+        local combinator_response
+        combinator_response=$(run_worker_interactive "Combinator" "$COMBINATOR_MODEL" "$combinator_prompt" "$user_prompt" "$context_memories" "$resonance_info")
+        if command -v jq &> /dev/null; then
+            echo "{\"round\": $round, \"phase\": \"combinator\", \"response\": \"$(echo "$combinator_response" | jq -R -s -c .)\"}" >> "$event_log"
+        else
+            echo "{\"round\": $round, \"phase\": \"combinator\", \"response\": \"$combinator_response\"}" >> "$event_log"
+        fi
+        
+        # Trader Phase - Execution and Decision
+        echo -e "${GREEN}⚡ PHASE 3: TRADER EXECUTION${NC}"
+        local trader_prompt="You are the TRADER. Execute the plan and make final decisions.\n\nCOMBINATOR PLAN: $combinator_response\n\nORIGINAL REQUEST: $user_prompt\n\nAvailable tools: ALL tools (including write_file, run_command, delete_file - with user confirmation)\n\nThink step by step and explain your execution reasoning in complete sentences. Output format: THOUGHT: [execution thoughts]\\nACTION: [tool_with_params] or FINAL: [complete_response]"
+        
+        local trader_response
+        trader_response=$(run_worker_interactive "Trader" "$TRADER_MODEL" "$trader_prompt" "$user_prompt" "$context_memories" "$resonance_info")
+        if command -v jq &> /dev/null; then
+            echo "{\"round\": $round, \"phase\": \"trader\", \"response\": \"$(echo "$trader_response" | jq -R -s -c .)\"}" >> "$event_log"
+        else
+            echo "{\"round\": $round, \"phase\": \"trader\", \"response\": \"$trader_response\"}" >> "$event_log"
+        fi
+        
+        # Check if we have a final response
+        if echo "$trader_response" | grep -q "FINAL:"; then
+            final_response=$(echo "$trader_response" | grep "FINAL:" | sed 's/FINAL: //')
+            echo -e "\\n${GREEN}🎯 FINAL RESPONSE IDENTIFIED - TERMINATING THOUGHT PROCESS${NC}"
+            break
+        fi
+        
+        # Learn from this round for the next iteration
+        user_prompt="Continue execution based on previous round results. Messenger: $messenger_response, Combinator: $combinator_response, Trader: $trader_response"
+        echo -e "${YELLOW}🔄 Integrating learnings from round $round into next iteration...${NC}"
+    done
+    
+    if [[ -z "$final_response" ]]; then
+        final_response="Maximum rounds reached. Final trader response: $trader_response"
+        echo -e "\\n${YELLOW}⚠️  MAXIMUM ROUNDS REACHED - PROCESS TERMINATED${NC}"
+    fi
+    
+    # Store in memory
+    echo -e "${BLUE}💾 Storing results in long-term memory...${NC}"
+    add_to_memory "$user_prompt" "$final_response" "$semantic_hash" "$instance_hash"
+    
+    echo -e "\\n${GREEN}✅ === TRIUMVIRATE MIND PROCESS COMPLETE ===${NC}"
+    echo -e "${GREEN}📋 FINAL ANALYSIS RESULT:${NC}"
+    echo -e "${GREEN}────────────────────────────────────────────────────────────${NC}"
+    echo "$final_response"
+    echo -e "${GREEN}────────────────────────────────────────────────────────────${NC}"
+}
 
-    # --- PROJECTION PHASE ---
-    log_worker "SYSTEM: Generating Cognitive Projection"
-    local task_id; task_id=$(generate_projection "$user_prompt")
-    local task_dir="$PROJECTS_DIR/$task_id"
-    mkdir -p "$task_dir"
-    echo "$task_id" >> "$CHAIN_LOG" # Add to chain for resonance
-    log_success "Task ID (Projection): $task_id"
-    log_success "Workspace created: $task_dir"
+# --- API SERVER ---
+start_api_server() {
+    if [[ -f "$API_PID_FILE" ]] && kill -0 "$(cat "$API_PID_FILE")" 2>/dev/null; then
+        log_info "API server already running (PID: $(cat "$API_PID_FILE"))"
+        return 0
+    fi
+    
+    log_info "Starting API server on port $API_PORT..."
+    
+    # Create a simple HTTP server using netcat
+    {
+        while true; do
+            nc -l -p "$API_PORT" -c 'echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\": \"ready\", \"version\": \"v8.1\"}"'
+        done
+    } &
+    
+    local api_pid=$!
+    echo $api_pid > "$API_PID_FILE"
+    log_success "API server started (PID: $api_pid)"
+}
 
-    # --- RESONANCE PHASE ---
-    local resonance_context; resonance_context=$(tail -n 10 "$CHAIN_LOG")
-
-    # --- MESSENGER PHASE ---
-    local messenger_prompt="You are the Messenger. Your job is to gather raw information using the available tools. Be fast and efficient.
-TOOLS: \`list_directory <path>\`, \`web_search <query>\`
-Analyze the user's request and use your tools to collect initial data."
-    local messenger_response; messenger_response=$(run_worker "MESSENGER" "$MESSENGER_MODEL" "$messenger_prompt" "User Request: ${user_prompt}")
-
-    # --- COMBINATOR PHASE ---
-    local combinator_prompt="You are the Combinator. You are a creative coder. Your job is to take the user's request and the Messenger's raw data, then brainstorm multiple potential solutions and code snippets. Don't worry about being perfect; focus on generating diverse ideas."
-    local combinator_context="User Request: ${user_prompt}\n--- Messenger's Report ---\n${messenger_response}"
-    local combinator_response; combinator_response=$(run_worker "COMBINATOR" "$COMBINATOR_MODEL" "$combinator_prompt" "$combinator_context")
-
-    # --- TRADER PHASE ---
-    local trader_prompt="You are the Trader. You are the final executive decision-maker. Your job is to analyze the user's request, the Messenger's raw data, and the Combinator's creative ideas.
-You must also consider the historical 'resonance' of past tasks.
-Your final output MUST be a single, logical, optimal plan of action formatted with [FINAL_ANSWER] at the end, ready for evaluation by an external system like Gemini."
-    local trader_context="User Request: ${user_prompt}\n--- Messenger's Report ---\n${messenger_response}\n--- Combinator's Ideas ---\n${combinator_response}\n--- Task Resonance (Recent Task History) ---\n${resonance_context}"
-    local trader_response; trader_response=$(run_worker "TRADER" "$TRADER_MODEL" "$trader_prompt" "$trader_context")
-
-    # --- TRIGGER EVALUATION PHASE ---
-    if echo "$trader_response" | grep -q '\[FINAL_ANSWER\]'; then
-        log_success "Trader has produced the final actionable answer."
-        local final_answer_payload; final_answer_payload=$(echo "$trader_response" | sed -n '/\[FINAL_ANSWER\]/,$p' | sed '1d' | sed 's/^[ \t]*//' | jq -sR .)
-
-        echo
-        log_info "The final answer is ready for evaluation by Gemini."
-        printf "${C_BOLD}${C_GREEN}To evaluate, run the following command:${C_RESET}\n"
-        printf "${C_CYAN}echo %s | gcloud ai-platform models predict --model gemini-pro --region us-central1 --json-request=-\n" "$final_answer_payload"
-        echo
+stop_api_server() {
+    if [[ -f "$API_PID_FILE" ]]; then
+        local pid
+        pid=$(cat "$API_PID_FILE")
+        if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid"
+            rm -f "$API_PID_FILE"
+            log_success "API server stopped"
+        else
+            log_warn "API server not running"
+            rm -f "$API_PID_FILE"
+        fi
     else
-        log_warn "The Trader did not produce a [FINAL_ANSWER]. The task may be incomplete."
+        log_warn "No API server PID file found"
     fi
 }
 
-# --- HELP & MAIN DISPATCHER ---
-show_help() {
-    printf "${C_BOLD}${C_CYAN}AI Agent v8.0 - The Triumvirate Mind Edition${C_RESET}\n\n"
-    printf "An agent that uses a multi-worker cognitive system to solve complex tasks.\n\n"
-    printf "${C_BOLD}${C_YELLOW}USAGE:${C_RESET}\n"
-    printf "  ${C_GREEN}ai${C_RESET} \"Your high-level goal or project idea\"\n"
-    printf "  ${C_GREEN}ai --seed${C_RESET} \"your bip39 phrase\" \"Your goal...\"\n"
-    printf "  The agent will use its three workers (Messenger, Combinator, Trader) to create a final plan.\n\n"
-    printf "${C_BOLD}${C_YELLOW}UTILITY:${C_RESET}\n"
-    printf "  ${C_GREEN}ai --setup${C_RESET}              Install all required dependencies.\n"
-    printf "  ${C_GREEN}ai --help${C_RESET}               Show this help message.\n"
+api_status() {
+    if [[ -f "$API_PID_FILE" ]] && kill -0 "$(cat "$API_PID_FILE")" 2>/dev/null; then
+        log_success "API server is running (PID: $(cat "$API_PID_FILE"))"
+        return 0
+    else
+        log_warn "API server is not running"
+        return 1
+    fi
 }
 
+# --- DEPENDENCY CHECK ---
+check_dependencies() {
+    local missing=()
+    
+    for cmd in sqlite3 jq curl; do
+        if ! command -v "$cmd" &> /dev/null; then
+            missing+=("$cmd")
+        fi
+    done
+    
+    if ! command -v ollama &> /dev/null; then
+        log_warn "Ollama not found. Install from https://ollama.ai"
+        missing+=("ollama")
+    else
+        # Check if models are available
+        local available_models
+        available_models=$(ollama list 2>/dev/null || echo "")
+        
+        for model in "$MESSENGER_MODEL" "$COMBINATOR_MODEL" "$TRADER_MODEL"; do
+            if ! echo "$available_models" | grep -q "$model"; then
+                log_warn "Model $model not found. Run: ollama pull $model"
+            fi
+        done
+    fi
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        log_error "Missing dependencies: ${missing[*]}"
+        return 1
+    fi
+    
+    log_success "All dependencies satisfied"
+    return 0
+}
+
+setup_environment() {
+    log_info "Setting up AI Agent environment..."
+    init_db
+    
+    # Set default config values
+    if [[ -z "$(get_config messenger_model)" ]]; then 
+        set_config messenger_model "$DEFAULT_MESSENGER_MODEL"
+        log_info "Set default messenger model: $DEFAULT_MESSENGER_MODEL"
+    fi
+    if [[ -z "$(get_config combinator_model)" ]]; then 
+        set_config combinator_model "$DEFAULT_COMBINATOR_MODEL"
+        log_info "Set default combinator model: $DEFAULT_COMBINATOR_MODEL"
+    fi
+    if [[ -z "$(get_config trader_model)" ]]; then 
+        set_config trader_model "$DEFAULT_TRADER_MODEL"
+        log_info "Set default trader model: $DEFAULT_TRADER_MODEL"
+    fi
+    if [[ -z "$(get_config temperature)" ]]; then set_config temperature "0.7"; fi
+    if [[ -z "$(get_config top_p)" ]]; then set_config top_p "0.9"; fi
+    if [[ -z "$(get_config api_port)" ]]; then set_config api_port "$API_PORT"; fi
+    
+    load_config_values
+    log_success "Environment setup complete"
+}
+
+# --- MAIN FUNCTION ---
 main() {
-    check_dependencies ollama curl jq tree lynx
-    if [[ $# -eq 0 ]]; then show_help && exit 0; fi
+    # Initialize databases first
+    init_db
+    # Load configuration values
+    load_config_values
+    
+    case "${1:-}" in
+        "--setup")
+            check_dependencies
+            setup_environment
+            ;;
+        "--config")
+            case "${2:-}" in
+                "set")
+                    set_config "$3" "$4"
+                    ;;
+                "get")
+                    get_config "$3"
+                    ;;
+                "view")
+                    view_config
+                    ;;
+                *)
+                    echo "Usage: $0 --config [set|get|view] [key] [value]"
+                    ;;
+            esac
+            ;;
+        "--hash")
+            case "${2:-}" in
+                "record")
+                    record_hash "$3" "$4" "$5"
+                    ;;
+                "get")
+                    get_hash "$3" "$4"
+                    ;;
+                "view")
+                    view_hash_index
+                    ;;
+                *)
+                    echo "Usage: $0 --hash [record|get|view] [type] [target] [hash]"
+                    ;;
+            esac
+            ;;
+        "--memory")
+            case "${2:-}" in
+                "search")
+                    search_memory "$3" "${4:-5}"
+                    ;;
+                "clear")
+                    clear_memory
+                    ;;
+                *)
+                    echo "Usage: $0 --memory [search|clear] [query] [limit]"
+                    ;;
+            esac
+            ;;
+        "--api")
+            case "${2:-}" in
+                "start")
+                    start_api_server
+                    ;;
+                "stop")
+                    stop_api_server
+                    ;;
+                "status")
+                    api_status
+                    ;;
+                *)
+                    echo "Usage: $0 --api [start|stop|status]"
+                    ;;
+            esac
+            ;;
+        "--tools")
+            echo "Available tools:"
+            echo "  read_file, list_directory, web_search, read_web_page"
+            echo "  write_file, create_directory, copy_file, move_file, delete_file"
+            echo "  make_web_request, check_port, download_file, run_command"
+            ;;
+        "--help")
+            cat << EOF
+AI Agent v8.1 - Adaptive Triumvirate Mind Edition
 
-    local seed_phrase=""
-    if [[ "$1" == "--seed" ]]; then
-        if [[ $# -lt 3 ]]; then log_error "Usage: ai --seed <phrase> \"<prompt>\""; fi
-        export AI_SEED="$2"
-        shift 2
-        log_info "Task seeded with user reflection."
-    fi
+Usage: $0 [OPTIONS] [PROMPT]
 
-    case "$1" in
-        --setup)
-            log "Installing dependencies...";
-            if command -v apt-get &>/dev/null; then sudo apt-get update && sudo apt-get install -y tree jq; fi
-            log_success "Setup complete.";;
-        --help) show_help ;;
+OPTIONS:
+  --setup                    Setup environment and check dependencies
+  --config set|get|view      Manage configuration
+  --hash record|get|view     Manage content hashing
+  --memory search|clear      Manage memory system
+  --api start|stop|status    Control API server
+  --tools                    List available tools
+  --help                     Show this help
+  --seed [value]             Set random seed for AI generation
+
+TRIUMVIRATE ARCHITECTURE:
+  - Messenger ($MESSENGER_MODEL): Analysis and understanding
+  - Combinator ($COMBINATOR_MODEL): Planning and strategy  
+  - Trader ($TRADER_MODEL): Execution and decisions
+
+EOF
+            ;;
+        "--seed")
+            AI_SEED="$2"
+            set_config seed "$AI_SEED"
+            log_success "Seed set to: $AI_SEED"
+            shift 2
+            main "$@"
+            ;;
         *)
-            run_triumvirate_agent "$@"
+            if [[ $# -eq 0 ]]; then
+                echo "Enter your prompt (Ctrl+D to finish):"
+                local prompt
+                prompt=$(cat)
+                if [[ -z "$prompt" ]]; then
+                    log_error "No prompt provided"
+                fi
+            else
+                local prompt="$*"
+            fi
+            
+            check_dependencies
+            
+            log_info "Processing prompt: $prompt"
+            
+            # Setup task pool and get hashes
+            local pool_info
+            pool_info=$(setup_task_pool "$prompt")
+            local semantic_hash instance_hash rehash_count
+            semantic_hash=$(echo "$pool_info" | cut -d' ' -f1)
+            instance_hash=$(echo "$pool_info" | cut -d' ' -f2)
+            rehash_count=$(echo "$pool_info" | cut -d' ' -f3)
+            
+            log_info "Task pool: semantic=$semantic_hash, instance=$instance_hash, resonance=$rehash_count"
+            
+            # Run the triumvirate agent
+            run_triumvirate_agent "$prompt" "$semantic_hash" "$instance_hash" "$rehash_count"
             ;;
     esac
 }
 
-main "$@"
+# --- TRAP FOR CLEANUP ---
+trap 'log_warn "Script interrupted"; exit 1' INT TERM
+
+# --- ENTRY POINT ---
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
