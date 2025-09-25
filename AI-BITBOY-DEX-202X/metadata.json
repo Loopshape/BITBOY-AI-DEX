@@ -1,0 +1,5 @@
+{
+  "name": "AI MemDEX",
+  "description": "A persistent, topic-based chat interface that uses the Gemini API for streaming responses, inspired by a command-line script.",
+  "requestFramePermissions": []
+}

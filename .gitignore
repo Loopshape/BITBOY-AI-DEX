@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+tmp
+thinking.log
+output.json
+snippets
+projects
+prompts
+cache
+

@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# AI / AGI Unified Tool with Ollama 2244-1
+# Usage: ai init | ai <file> | ai *<pattern> | ai :<f1:f2> | ai repo {clone|pull|push|sync} | ai "<prompt>"
+
+set -eu
+IFS=$'\n\t'
+
+HOME_ROOT="${HOME:-/data/data/com.termux/files/home}"
+BACKUP_DIR="$HOME_ROOT/.ai_backups"
+mkdir -p "$BACKUP_DIR"
+
+OLLAMA_MODEL="2244-1"
+OLLAMA_CLI="/home/linuxbrew/.linuxbrew/bin/ollama"
+
+# -----------------------
+# Logging helpers
+# -----------------------
+log_info()    { printf '\033[34m[*] %s\033[0m\n' "$*"; }
+log_success() { printf '\033[32m[+] %s\033[0m\n' "$*"; }
+log_warn()    { printf '\033[33m[!] %s\033[0m\n' "$*"; }
+log_error()   { printf '\033[31m[-] %s\033[0m\n' "$*"; }
+
+backup_file() {
+    local file="$1"
+    [ -f "$file" ] || return
+    cp "$file" "$BACKUP_DIR/$(basename "$file").$(date +%Y%m%d%H%M%S).bak"
+    log_info "Backup created: $file -> $BACKUP_DIR"
+}
+
+# -----------------------
+# Environment setup
+# -----------------------
+setup_bashrc() {
+    local bashrc="$HOME_ROOT/.bashrc"
+    backup_file "$bashrc"
+    cat > "$bashrc" <<'EOF'
+# ~/.bashrc AI integrated
+export PATH="$HOME/bin:$PATH"
+EOF
+    log_success ".bashrc enforced"
+}
+
+setup_python_env() {
+    [ -d "$HOME_ROOT/env" ] || python3 -m venv "$HOME_ROOT/env"
+    source "$HOME_ROOT/env/bin/activate"
+    log_success "Python3 virtualenv activated"
+}
+
+setup_nvm() {
+    export NVM_DIR="$HOME_ROOT/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    log_success "NVM loaded"
+    local LTS_VER=$(nvm ls-remote --lts | tail -1 | awk '{print $1}')
+    nvm install "$LTS_VER" >/dev/null 2>&1 || true
+    nvm use "$LTS_VER" >/dev/null 2>&1 || true
+    log_success "Node.js version: $(node -v)"
+}
+
+check_ollama() {
+    if [ -x "$OLLAMA_CLI" ]; then
+        log_success "Ollama CLI available"
+    else
+        log_warn "Ollama CLI not found at $OLLAMA_CLI"
+    fi
+}
+
+run_ollama() {
+    local prompt="$1"
+    if [ -x "$OLLAMA_CLI" ]; then
+        "$OLLAMA_CLI" run "$OLLAMA_MODEL" <<< "$prompt"
+    else
+        log_warn "Ollama CLI not installed; outputting prompt instead"
+        echo "$prompt"
+    fi
+}
+
+# -----------------------
+# Repo management
+# -----------------------
+REPO_DIR="$HOME_ROOT/AI-BITBOY-DEX-202X"
+REPO_URL="git@github.com:Loopshape/AI-BITBOY-DEX-202X.git"
+
+repo_clone() {
+    [ -d "$REPO_DIR" ] && { log_warn "Repo exists"; return; }
+    git clone "$REPO_URL" "$REPO_DIR"
+    log_success "Repo cloned"
+}
+
+repo_pull() {
+    cd "$REPO_DIR" && git pull
+    log_success "Repo updated"
+}
+
+repo_push() {
+    local msg="${1:-update}"
+    cd "$REPO_DIR"
+    git add .
+    git commit -m "$msg" || log_warn "No changes to commit"
+    git push origin main
+    log_success "Changes pushed"
+}
+
+repo_sync() {
+    log_info "Syncing repo (stub function)"
+}
+
+# -----------------------
+# AI file processing
+# -----------------------
+ai_file() {
+    for f in "$@"; do
+        [ -f "$f" ] || continue
+        backup_file "$f"
+        log_info "Processing $f..."
+        echo "[AI OUTPUT] $(head -1 "$f")" > "$f.processed"
+        log_success "Processed $f -> $f.processed"
+    done
+}
+
+ai_batch() {
+    local pattern="$1"
+    for f in $pattern; do
+        ai_file "$f"
+    done
+}
+
+ai_pipeline() {
+    IFS=':' read -r -a files <<< "$1"
+    ai_file "${files[@]}"
+}
+
+# -----------------------
+# Installer
+# -----------------------
+install_ai() {
+    setup_bashrc
+    mkdir -p "$HOME_ROOT/bin"
+    cp "$0" "$HOME_ROOT/bin/ai"
+    chmod +x "$HOME_ROOT/bin/ai"
+    log_success "AI tool installed at $HOME_ROOT/bin/ai"
+}
+
+# -----------------------
+# Main argument parser
+# -----------------------
+if [ $# -eq 0 ]; then
+    log_info "Usage: ai init | ai <file> | ai *<pattern> | ai :<f1:f2> | ai repo {clone|pull|push|sync} | ai \"<prompt>\""
+    exit 0
+fi
+
+case "$1" in
+    init) install_ai ;;
+    -) shift; ai_file "$@" ;;
+    \*) shift; ai_batch "$*" ;;
+    :) shift; ai_pipeline "$1" ;;
+    repo)
+        shift
+        case "${1:-}" in
+            clone) repo_clone ;;
+            pull) repo_pull ;;
+            push) shift; repo_push "$*" ;;
+            sync) repo_sync ;;
+            *) log_error "Usage: ai repo {clone|pull|push|sync}" ;;
+        esac
+        ;;
+    *)
+        # Treat all other arguments as a prompt for Ollama 2244-1
+        PROMPT="$*"
+        log_info "Running prompt on Ollama $OLLAMA_MODEL..."
+        run_ollama "$PROMPT"
+        ;;
+esac

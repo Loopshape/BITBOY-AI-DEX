@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-BITBOY-DEX :: Persona Core</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="index.css">
+    <script type="importmap">
+    {
+      "imports": {
+        "@google/genai": "https://aistudiocdn.com/@google/genai@^1.19.0",
+        "marked": "https://aistudiocdn.com/marked@^16.2.1"
+      }
+    }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AI-BITBOY-DEX :: Persona Core</h1>
+            <p class="subtitle">Dynamic Strategy & Task Re-bouncing Protocol</p>
+            <a href="https://github.com/Loopshape/AI-BITBOY-DEX-202X" target="_blank" rel="noopener noreferrer" class="github-link" aria-label="View source on GitHub">
+                <i class="fab fa-github"></i>
+            </a>
+        </header>
+        
+        <div class="dashboard">
+            <div class="panel">
+                <h2 class="panel-title"><i class="fas fa-wallet"></i> Portfolio Overview</h2>
+                <p class="portfolio-value" id="portfolioValue">Loading...</p>
+                <p class="pnl" id="pnlValue">--</p>
+                <div class="chart-container"><canvas id="portfolioChart"></canvas></div>
+            </div>
+            
+            <div class="panel" id="ai-agent-panel">
+                <h2 class="panel-title"><i class="fas fa-robot"></i> AI Trading Agent</h2>
+                <div class="persona-display">
+                    <div id="personaAvatar" class="persona-avatar">🧠</div>
+                    <div class="persona-info">
+                        <h3 id="personaName">GRID</h3>
+                        <p id="personaDesc">Analyzes market structure with cold, hard logic.</p>
+                    </div>
+                    <button id="manage-personas-btn" class="footer-btn" aria-label="Manage Personas"><i class="fas fa-edit"></i></button>
+                </div>
+                <div id="personaSelector"></div>
+                <div class="controls-panel">
+                    <div class="toggle-switch">
+                        <span>Fast</span>
+                        <input type="checkbox" id="fast-mode-checkbox" class="toggle-checkbox">
+                        <label for="fast-mode-checkbox" class="toggle-label"></label>
+                    </div>
+                    <div class="toggle-switch">
+                        <span>Memory</span>
+                        <input type="checkbox" id="memory-toggle-checkbox" class="toggle-checkbox" checked>
+                        <label for="memory-toggle-checkbox" class="toggle-label"></label>
+                    </div>
+                    <div class="toggle-switch">
+                        <span>Prioritized</span>
+                        <input type="checkbox" id="prioritized-memory-checkbox" class="toggle-checkbox" checked>
+                        <label for="prioritized-memory-checkbox" class="toggle-label"></label>
+                    </div>
+                    <div class="toggle-switch">
+                        <span>Learning</span>
+                        <input type="checkbox" id="learning-mode-checkbox" class="toggle-checkbox" checked>
+                        <label for="learning-mode-checkbox" class="toggle-label"></label>
+                    </div>
+                </div>
+                <div class="message-list-container" id="message-list-container">
+                    <div id="message-list"></div>
+                </div>
+                <div class="panel-footer">
+                     <div class="footer-actions">
+                        <button id="summarize-btn" class="footer-btn" aria-label="Summarize chat"><i class="fas fa-file-alt"></i></button>
+                        <button id="export-chat-btn" class="footer-btn" aria-label="Export chat"><i class="fas fa-download"></i></button>
+                        <button id="generate-video-btn" class="footer-btn" aria-label="Generate video"><i class="fas fa-video"></i></button>
+                        <button id="settings-btn" class="footer-btn" aria-label="Open settings"><i class="fas fa-cog"></i></button>
+                        <button id="clear-chat-btn" class="footer-btn danger-btn" aria-label="Clear chat"><i class="fas fa-trash"></i></button>
+                     </div>
+                     <form id="chat-form" class="chat-form">
+                        <textarea id="prompt-input" placeholder="Engage AI Persona..." rows="1"></textarea>
+                        <button id="send-btn" type="submit" aria-label="Send message">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+            
+            <div class="panel">
+                <h2 class="panel-title"><i class="fas fa-project-diagram"></i> Pools of Interest</h2>
+                <div class="interest-pools-grid" id="interestPoolsGrid"></div>
+            </div>
+            
+            <div class="panel">
+                <h2 class="panel-title"><i class="fas fa-link"></i> Blockchain Synchronization</h2>
+                <div class="sync-feed" id="syncFeed"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2><i class="fas fa-cog"></i> Settings</h2>
+                <button id="close-modal-btn" class="modal-close-btn" aria-label="Close settings">&times;</button>
+            </header>
+            <div class="modal-body">
+                <section class="settings-section">
+                    <h3>Model Parameters</h3>
+                    <div class="form-group">
+                        <label for="temperature-slider">Temperature: <span id="temperature-value">0.5</span></label>
+                        <input type="range" id="temperature-slider" min="0" max="1" step="0.1" value="0.5">
+                    </div>
+                    <div class="form-group">
+                        <label for="top-p-slider">Top-P: <span id="top-p-value">0.95</span></label>
+                        <input type="range" id="top-p-slider" min="0" max="1" step="0.05" value="0.95">
+                    </div>
+                     <div class="form-group">
+                        <label for="top-k-slider">Top-K: <span id="top-k-value">40</span></label>
+                        <input type="range" id="top-k-slider" min="1" max="100" step="1" value="40">
+                    </div>
+                </section>
+                 <section class="settings-section">
+                    <h3>Memory Configuration</h3>
+                    <div class="form-group">
+                        <label for="context-messages-input">Standard Memory Messages</label>
+                        <input type="number" id="context-messages-input" min="0" max="20" value="6">
+                    </div>
+                    <div class="form-group">
+                        <label for="prioritized-context-input">Prioritized Memory Messages</label>
+                        <input type="number" id="prioritized-context-input" min="0" max="20" value="5">
+                    </div>
+                </section>
+            </div>
+            <footer class="modal-footer">
+                <button id="cancel-settings-btn" class="modal-btn secondary-btn">Cancel</button>
+                <button id="save-settings-btn" class="modal-btn primary-btn">Save Settings</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- Video Generation Modal -->
+    <div id="video-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2><i class="fas fa-video"></i> Generate Video</h2>
+                <button id="close-video-modal-btn" class="modal-close-btn" aria-label="Close video generator">&times;</button>
+            </header>
+            <div class="modal-body">
+                <div id="video-generation-form">
+                    <div class="form-group">
+                        <label for="video-prompt-input">Prompt</label>
+                        <textarea id="video-prompt-input" class="modal-textarea" rows="3" placeholder="e.g., A neon hologram of a cat driving at top speed"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Optional Starting Image</label>
+                        <div id="video-image-preview-container" style="display: none;">
+                            <img id="video-image-preview" src="" alt="Image preview"/>
+                            <button id="remove-video-image-btn" aria-label="Remove image">&times;</button>
+                        </div>
+                        <label for="video-image-input" class="file-upload-label">
+                            <i class="fas fa-upload"></i> Choose Image
+                        </label>
+                        <input type="file" id="video-image-input" accept="image/*" style="display: none;">
+                    </div>
+                </div>
+                <div id="video-generation-status" class="generation-status" style="display: none;">
+                    <div class="spinner"></div>
+                    <p id="video-status-message">Initializing generation...</p>
+                </div>
+            </div>
+            <footer class="modal-footer">
+                <button id="cancel-video-btn" class="modal-btn secondary-btn">Cancel</button>
+                <button id="generate-video-submit-btn" class="modal-btn primary-btn">Generate</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- Persona Management Modal -->
+    <div id="persona-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <header class="modal-header">
+                <h2 id="persona-modal-title"><i class="fas fa-users-cog"></i> Manage Personas</h2>
+                <button id="close-persona-modal-btn" class="modal-close-btn" aria-label="Close persona manager">&times;</button>
+            </header>
+            <div class="modal-body">
+                <div id="persona-list-view">
+                    <div id="custom-personas-list">
+                        <!-- Custom personas will be rendered here -->
+                    </div>
+                    <button id="create-persona-btn" class="modal-btn primary-btn" style="width: 100%; margin-top: 1rem;">Create New Persona</button>
+                </div>
+                <form id="persona-form" style="display: none;">
+                    <input type="hidden" id="persona-id-input">
+                    <div class="form-group">
+                        <label for="persona-name-input">Persona Name</label>
+                        <input type="text" id="persona-name-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="persona-avatar-input">Avatar (Emoji)</label>
+                        <input type="text" id="persona-avatar-input" maxlength="2" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="persona-desc-input">Description</label>
+                        <textarea id="persona-desc-input" class="modal-textarea" rows="2" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="persona-instruction-input">System Instruction</label>
+                        <textarea id="persona-instruction-input" class="modal-textarea" rows="4" required></textarea>
+                    </div>
+                </form>
+            </div>
+            <footer class="modal-footer">
+                <button id="cancel-persona-edit-btn" class="modal-btn secondary-btn" style="display: none;">Cancel</button>
+                <button id="save-persona-btn" class="modal-btn primary-btn" style="display: none;">Save Persona</button>
+            </footer>
+        </div>
+    </div>
+</body>
+</html>
