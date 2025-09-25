@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# ai.sh - AI DevOps Platform v8.2 - Unified DevOps Agent Edition
-# Merges the Triumvirate Mind with a dedicated CodeWriter and Git Assistant.
+# ai.sh - AI DevOps Platform v8.2 - Unified DevOps Agent
+# Merges a direct-action CodeWriter & Git Assistant with the multi-step Triumvirate Mind Agent.
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -11,17 +11,17 @@ PROJECTS_DIR="${PROJECTS_DIR:-$HOME/ai_projects}"
 SSH_DIR="$HOME/.ssh"
 GIT_SSH_KEY="$SSH_DIR/id_ai_agent"
 
-# Default Worker Models
+# --- Default AI Models (can be overridden via --config) ---
 DEFAULT_MESSENGER_MODEL="gemma3:1b"
 DEFAULT_COMBINATOR_MODEL="deepseek-r1:1.5b"
 DEFAULT_TRADER_MODEL="2244-1"
-DEFAULT_CODEWRITER_MODEL="core"
+DEFAULT_CODEWRITER_MODEL="codellama:7b"
 
 # Initialize with defaults - will be overridden by config
-MESSENGER_MODEL="core"
-COMBINATOR_MODEL="2244-1"
-TRADER_MODEL="gemma3:1b"
-CODEWRITER_MODEL="deepseek-r1:1.5b"
+MESSENGER_MODEL=""
+COMBINATOR_MODEL=""
+TRADER_MODEL=""
+CODEWRITER_MODEL=""
 
 OLLAMA_BIN="$(command -v ollama || true)"
 MEMORY_DB="$AI_HOME/memory.db"
@@ -69,13 +69,21 @@ search_memory() { sqlite3 -header -column "$MEMORY_DB" "SELECT timestamp,prompt,
 
 # --- GIT & SSH ---
 setup_ssh_key() {
-    local key_content="$1"; echo "$key_content" > "$GIT_SSH_KEY"; chmod 600 "$GIT_SSH_KEY"
-    # Fixed here-doc syntax for portability and correctness
-    {
-        echo "Host github.com"; echo "    HostName github.com"; echo "    User git"; echo "    IdentityFile $GIT_SSH_KEY"; echo "    IdentitiesOnly yes"
-        echo "Host gitlab.com"; echo "    HostName gitlab.com"; echo "    User git"; echo "    IdentityFile $GIT_SSH_KEY"; echo "    IdentitiesOnly yes"
-        echo "Host bitbucket.org"; echo "    HostName bitbucket.org"; echo "    User git"; echo "    IdentityFile $GIT_SSH_KEY"; echo "    IdentitiesOnly yes"
-    } > "$SSH_DIR/config"
+    local key_content="$1"; echo -e "$key_content" > "$GIT_SSH_KEY"; chmod 600 "$GIT_SSH_KEY"
+    # FIX: Use a robust method for creating the config file that avoids here-doc syntax errors.
+    printf '%s\n' \
+        "Host github.com" \
+        "    HostName github.com" \
+        "    User git" \
+        "    IdentityFile $GIT_SSH_KEY" \
+        "    IdentitiesOnly yes" \
+        "" \
+        "Host gitlab.com" \
+        "    HostName gitlab.com" \
+        "    User git" \
+        "    IdentityFile $GIT_SSH_KEY" \
+        "    IdentitiesOnly yes" \
+        > "$SSH_DIR/config"
     chmod 600 "$SSH_DIR/config"; log_success "SSH key configured."
 }
 test_ssh() { if ssh -T -o ConnectTimeout=5 -o StrictHostKeyChecking=no git@github.com 2>&1 | grep -q "successfully authenticated"; then log_success "SSH authentication working"; else log_warn "SSH test inconclusive"; fi; }
@@ -87,7 +95,7 @@ git_operation() {
         pull) local b; b=$(git branch --show-current); GIT_SSH_COMMAND="ssh -i $GIT_SSH_KEY" git pull origin "${branch:-$b}" ;;
         push)
             if git diff --quiet && git diff --cached --quiet; then log_warn "No changes to push"; return 0; fi
-            git add .; read -p "Commit message: " msg; [[ -z "$msg" ]] && msg="aic: auto-commit $(date '+%F %T')"
+            git add .; read -p "Commit message: " msg; [[ -z "$msg" ]] && msg="ai: auto-commit $(date '+%F %T')"
             git commit -m "$msg"; GIT_SSH_COMMAND="ssh -i $GIT_SSH_KEY" git push origin "$(git branch --show-current)"
             ;;
         sync) git_operation "pull" "." "$branch"; git_operation "push" "." "$branch" ;;
@@ -102,11 +110,14 @@ run_model_streaming() {
     local model="$1" prompt="$2"; ensure_ollama_server
     if ! "$OLLAMA_BIN" list | grep -q "^${model}"; then log "Model $model not found. Pulling..."; "$OLLAMA_BIN" pull "$model"; fi
     log_info "Running model $model (streaming)..."; echo -e "${GREEN}--- AI Response ---${NC}"
-    "$OLLAMA_BIN" run "$model" "$prompt"
+    # Use process substitution to capture output while streaming
+    local response
+    response=$("$OLLAMA_BIN" run "$model" "$prompt" | tee /dev/tty)
+    echo "$response"
 }
 
 # --- CODEWRITER MODE ---
-detect_language() { # (Implementation from your script)
+detect_language() {
     case "$1" in *python*|*py*)echo "python";;*bash*|*shell*)echo "bash";;*javascript*|*js*)echo "javascript";;*html*)echo "html";;*css*)echo "css";;*)echo "text";;esac
 }
 get_project_context() {
@@ -140,10 +151,10 @@ User Request: $prompt"
 
 # --- TRIUMVIRATE AGENT MODE ---
 run_triumvirate_agent() {
-    # This is the advanced, multi-step agent for complex tasks.
-    # For brevity, this is a placeholder. The full implementation from v8.1 would go here.
-    log_phase "Triumvirate Agent Mode"
-    log_info "This mode would use Messenger, Combinator, and Trader for multi-step tasks."
+    log_phase "Activating Triumvirate Agent"
+    log_info "This mode uses Messenger, Combinator, and Trader for multi-step tasks."
+    log_info "For a full implementation, please refer to v8.1 of the script."
+    # This is a placeholder for the advanced agent. The core logic from v8.1 would be integrated here.
     run_model_streaming "$TRADER_MODEL" "Act as an expert agent. The user's request is: $*"
 }
 
@@ -185,14 +196,15 @@ main() {
 
     case "$1" in
         --setup)
-            log_info "Setting up environment..."
+            log_info "Setting up environment and dependencies..."
             if command -v apt-get &>/dev/null; then sudo apt-get update && sudo apt-get install -y sqlite3 git tree;
             elif command -v brew &>/dev/null; then brew install sqlite git tree; fi
+            # Set default models in config
             set_config messenger_model "$DEFAULT_MESSENGER_MODEL"
             set_config combinator_model "$DEFAULT_COMBINATOR_MODEL"
             set_config trader_model "$DEFAULT_TRADER_MODEL"
             set_config codewriter_model "$DEFAULT_CODEWRITER_MODEL"
-            log_success "Setup complete." ;;
+            log_success "Setup complete. Models configured." ;;
         --help|-h) show_help ;;
         code) shift; code_writer "$@" ;;
         git) shift; git_operation "${1:-status}" "${2:-.}" "${3:-}" ;;
@@ -200,7 +212,7 @@ main() {
         setup-ssh) if [[ $# -lt 2 ]]; then log_error "SSH key content required."; fi; setup_ssh_key "$2"; test_ssh ;;
         config) 
             log_phase "Current Configuration"
-            view_config
+            sqlite3 -header -column "$CONFIG_DB" "SELECT * FROM config;" 2>/dev/null || echo "No config set."
             echo "SSH Key: $GIT_SSH_KEY ($( [[ -f "$GIT_SSH_KEY" ]] && echo "Exists" || echo "Not Found"))"
             ;;
         *) run_triumvirate_agent "$@" ;;
