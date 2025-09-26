@@ -1,20 +1,27 @@
 {
-  "name": "ai-bitboy-dex-::-strategic-synthesis-core",
+  "name": "bitboy-ai-dex",
+  "version": "1.0.0",
+  "description": "React + Vite project with common libraries",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^1.19.0"
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "jquery": "^3.7.1",
+    "express": "^4.19.2",
+    "lodash": "^4.17.21",
+    "bootstrap": "^5.3.1",
+    "gsap": "^3.13.0"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
-    
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^7.1.7",
+    "@vitejs/plugin-react": "^3.2.0",
+    "grunt": "^1.6.1",
+    "gulp": "^4.0.2",
+    "harp": "^0.42.4"
   }
 }
