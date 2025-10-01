@@ -1,20 +1,36 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: '127.0.0.1', // avoid uv_interface_addresses error in PRoot/Termux
-    port: 8888,        // custom port
-    open: true,        // auto-open browser when server starts
+    host: '127.0.0.1',
+    port: 8888,
+    open: true,
+    fs: {
+      strict: true, // only serve files from project root
+    },
+    watch: {
+      // ignore node_modules and .git completely in dev mode
+      ignored: ['**/node_modules/**', '**/.git/**'],
+    },
+  },
+  optimizeDeps: {
+    // exclude all dependencies inside node_modules from pre-bundling
+    exclude: ['**/node_modules/**'],
   },
   build: {
-    outDir: 'dist',    // build output folder
-    sourcemap: false,  // optional, disable source maps for production
+    outDir: 'dist',
+    sourcemap: false,
+    rollupOptions: {
+      // prevent Rollup from bundling anything inside node_modules or .git
+      external: ['**/node_modules/**', '**/.git/**'],
+    },
   },
   resolve: {
     alias: {
-      '@': '/src',     // optional, allows import from '@/...' to point to /src
+      '@': path.resolve(__dirname, 'src'),
     },
   },
 });
