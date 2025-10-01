@@ -288,15 +288,4 @@ ai analyze ETH/USD
 
 ---
 
-This README.md now documents all capabilities, commands, paths, models, tools, and security measures in a clear and structured format for developers or operators.
-
-
----
-
-
-                    </h1>
-                </div>
-            </div>
-        </header>
-    );
-};
+<exe.opcode@gmail.com>
