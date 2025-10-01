@@ -1,36 +1,24 @@
 import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import { createHtmlPlugin } from 'vite-plugin-html';
 import path from 'path';
 
 export default defineConfig({
-  plugins: [react()],
+  root: path.resolve(__dirname, '.'), // project root
+  plugins: [
+    createHtmlPlugin({
+      minify: false, // optional: don’t minify HTML in dev
+    }),
+  ],
   server: {
-    host: '127.0.0.1',
-    port: 8888,
-    open: true,
-    fs: {
-      strict: true, // only serve files from project root
-    },
-    watch: {
-      // ignore node_modules and .git completely in dev mode
-      ignored: ['**/node_modules/**', '**/.git/**'],
-    },
-  },
-  optimizeDeps: {
-    // exclude all dependencies inside node_modules from pre-bundling
-    exclude: ['**/node_modules/**'],
-  },
-  build: {
-    outDir: 'dist',
-    sourcemap: false,
-    rollupOptions: {
-      // prevent Rollup from bundling anything inside node_modules or .git
-      external: ['**/node_modules/**', '**/.git/**'],
+    port: 8080,
+    strictPort: true,
+    hmr: {
+      overlay: true, // keep red error overlay; set false to disable
     },
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src'),
+      '@': path.resolve(__dirname, 'src'), // adjust if you have a src folder
     },
   },
 });

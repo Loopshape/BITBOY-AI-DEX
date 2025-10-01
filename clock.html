@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>8-Tick Unit Counter (×3200)</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        h1 {
+            font-size: 2.8rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .subtitle {
+            font-size: 1.2rem;
+            margin-bottom: 40px;
+            opacity: 0.9;
+            line-height: 1.6;
+        }
+        
+        .counter-display {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px 30px;
+            margin-bottom: 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .counter-value {
+            font-size: 5rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.3);
+            height: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .counter-label {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        .stat-box {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 25px 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        .stat-label {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 40px;
+            flex-wrap: wrap;
+        }
+        
+        button {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 50px;
+            color: white;
+            padding: 12px 30px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+        
+        button:active {
+            transform: translateY(1px);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-start {
+            background: linear-gradient(to right, #00b09b, #96c93d);
+        }
+        
+        .btn-stop {
+            background: linear-gradient(to right, #ff416c, #ff4b2b);
+        }
+        
+        .btn-reset {
+            background: linear-gradient(to right, #8e2de2, #4a00e0);
+        }
+        
+        .progress-container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 40px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .progress-bar {
+            height: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(to right, #00b09b, #96c93d);
+            border-radius: 10px;
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+        
+        .pulse {
+            animation: pulse 0.5s ease;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .tick-animation {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: -1;
+        }
+        
+        .tick-circle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: rgba(0, 176, 155, 0.7);
+            border-radius: 50%;
+            animation: tickMove 2s linear forwards;
+        }
+        
+        @keyframes tickMove {
+            0% {
+                transform: translate(0, 0) scale(1);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(var(--tx), var(--ty)) scale(0);
+                opacity: 0;
+            }
+        }
+        
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .counter-value {
+                font-size: 3.5rem;
+                height: 80px;
+            }
+            
+            .stats-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .stat-value {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="tick-animation" id="tickAnimation"></div>
+    
+    <div class="container">
+        <h1>8-Tick Unit Counter</h1>
+        <p class="subtitle">Increments by 8 units every 3200ms (3.2 seconds)<br>Multiplied by 3200</p>
+        
+        <div class="counter-display">
+            <div class="counter-value" id="counter">0</div>
+            <div class="counter-label">Current Value</div>
+        </div>
+        
+        <div class="stats-container">
+            <div class="stat-box">
+                <div class="stat-value" id="ticks">0</div>
+                <div class="stat-label">Ticks</div>
+            </div>
+            
+            <div class="stat-box">
+                <div class="stat-value" id="multiplied">0</div>
+                <div class="stat-label">Multiplied Value</div>
+            </div>
+            
+            <div class="stat-box">
+                <div class="stat-value" id="timeElapsed">0s</div>
+                <div class="stat-label">Time Elapsed</div>
+            </div>
+        </div>
+        
+        <div class="progress-container">
+            <div>Next Tick Progress</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn-start" id="startBtn">
+                <span>▶</span> Start
+            </button>
+            <button class="btn-stop" id="stopBtn" disabled>
+                <span>⏸</span> Stop
+            </button>
+            <button class="btn-reset" id="resetBtn">
+                <span>↺</span> Reset
+            </button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const counterElement = document.getElementById('counter');
+            const ticksElement = document.getElementById('ticks');
+            const multipliedElement = document.getElementById('multiplied');
+            const timeElapsedElement = document.getElementById('timeElapsed');
+            const progressFillElement = document.getElementById('progressFill');
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            const resetBtn = document.getElementById('resetBtn');
+            const tickAnimationElement = document.getElementById('tickAnimation');
+            
+            let counter = 0;
+            let ticks = 0;
+            let intervalId = null;
+            let progressIntervalId = null;
+            let startTime = null;
+            let elapsedTime = 0;
+            const tickInterval = 3200; // 3200ms = 3.2 seconds
+            
+            function updateDisplay() {
+                counterElement.textContent = counter.toLocaleString();
+                ticksElement.textContent = ticks;
+                multipliedElement.textContent = (counter * 3200).toLocaleString();
+                
+                // Add pulse animation
+                counterElement.classList.add('pulse');
+                setTimeout(() => {
+                    counterElement.classList.remove('pulse');
+                }, 500);
+                
+                // Update time elapsed
+                if (startTime) {
+                    elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+                    timeElapsedElement.textContent = `${elapsedTime}s`;
+                }
+            }
+            
+            function createTickAnimation() {
+                // Create 8 small circles that move outward (one for each unit)
+                for (let i = 0; i < 8; i++) {
+                    const circle = document.createElement('div');
+                    circle.className = 'tick-circle';
+                    
+                    // Calculate random direction and distance
+                    const angle = Math.random() * Math.PI * 2;
+                    const distance = 100 + Math.random() * 200;
+                    const tx = Math.cos(angle) * distance;
+                    const ty = Math.sin(angle) * distance;
+                    
+                    circle.style.setProperty('--tx', `${tx}px`);
+                    circle.style.setProperty('--ty', `${ty}px`);
+                    
+                    // Random position around the counter
+                    const left = 50 + (Math.random() - 0.5) * 30;
+                    const top = 50 + (Math.random() - 0.5) * 30;
+                    circle.style.left = `${left}%`;
+                    circle.style.top = `${top}%`;
+                    
+                    tickAnimationElement.appendChild(circle);
+                    
+                    // Remove the element after animation completes
+                    setTimeout(() => {
+                        if (circle.parentNode === tickAnimationElement) {
+                            tickAnimationElement.removeChild(circle);
+                        }
+                    }, 2000);
+                }
+            }
+            
+            function startCounter() {
+                if (intervalId) return;
+                
+                startTime = Date.now() - (elapsedTime * 1000);
+                
+                // Start the main counter interval
+                intervalId = setInterval(() => {
+                    ticks++;
+                    counter += 8;
+                    updateDisplay();
+                    createTickAnimation();
+                }, tickInterval);
+                
+                // Start progress bar animation
+                let progress = 0;
+                const progressStep = 100 / (tickInterval / 50); // Update every 50ms
+                
+                progressIntervalId = setInterval(() => {
+                    progress += progressStep;
+                    progressFillElement.style.width = `${Math.min(progress, 100)}%`;
+                    
+                    if (progress >= 100) {
+                        progress = 0;
+                    }
+                }, 50);
+                
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+            }
+            
+            function stopCounter() {
+                if (intervalId) {
+                    clearInterval(intervalId);
+                    intervalId = null;
+                }
+                
+                if (progressIntervalId) {
+                    clearInterval(progressIntervalId);
+                    progressIntervalId = null;
+                }
+                
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+            
+            function resetCounter() {
+                stopCounter();
+                counter = 0;
+                ticks = 0;
+                elapsedTime = 0;
+                startTime = null;
+                progressFillElement.style.width = '0%';
+                updateDisplay();
+                
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+            
+            // Event listeners
+            startBtn.addEventListener('click', startCounter);
+            stopBtn.addEventListener('click', stopCounter);
+            resetBtn.addEventListener('click', resetCounter);
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', function(event) {
+                if (event.code === 'Space') {
+                    event.preventDefault();
+                    if (intervalId) {
+                        stopCounter();
+                    } else {
+                        startCounter();
+                    }
+                } else if (event.code === 'Escape') {
+                    resetCounter();
+                }
+            });
+            
+            // Initialize display
+            updateDisplay();
+        });
+    </script>
+</body>
+</html>

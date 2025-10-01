@@ -1,20 +1,17 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+import React from 'react';
+import { Code } from 'lucide-react';
 
-# Run and deploy your AI Studio app
-
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/drive/1UXBWEuXcbeAjGrv_Br34y-H5wKPjW1cz
-
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+export const Header: React.FC = () => {
+    return (
+        <header /* ... styles */>
+            <div /* ... styles */>
+                <div className="flex items-center gap-3">
+                    <Code className="h-7 w-7 text-accent" /* ... styles */ />
+                    <h1 className="text-xl font-bold text-white tracking-widest">
+                        OLLAMA_CODE_REVIEWER
+                    </h1>
+                </div>
+            </div>
+        </header>
+    );
+};

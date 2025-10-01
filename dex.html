@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DEX Dashboard</title>
+<style>
+body { font-family: sans-serif; background: #111; color: #eee; padding: 2rem; }
+h1 { color: #0f0; }
+table { border-collapse: collapse; width: 50%; }
+td, th { border: 1px solid #555; padding: 0.5rem; text-align: center; }
+</style>
+</head>
+<body>
+<h1>DEX Dashboard</h1>
+<table>
+<thead><tr><th>Token</th><th>Price (USD)</th></tr></thead>
+<tbody>
+<tr><td>BTC</td><td id="btc">-</td></tr>
+<tr><td>USDC</td><td id="usdc">-</td></tr>
+<tr><td>SHIB</td><td id="shib">-</td></tr>
+</tbody>
+</table>
+
+<script>
+async function fetchPrices() {
+    try {
+        const btcData = await fetch("https://blockchain.info/ticker").then(r => r.json());
+        document.getElementById("btc").textContent = `$${btcData.USD.last.toLocaleString()}`;
+
+        const coingecko = {
+            usdc: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            shib: "0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE"
+        };
+        for (const token in coingecko) {
+            const url = `https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=${coingecko[token]}&vs_currencies=usd`;
+            const data = await fetch(url).then(r => r.json());
+            document.getElementById(token).textContent = `$${data[coingecko[token].toLowerCase()].usd.toLocaleString()}`;
+        }
+    } catch(e) {
+        console.error("Error fetching prices", e);
+    }
+}
+
+fetchPrices();
+setInterval(fetchPrices, 15000); // Refresh every 15 seconds
+</script>
+</body>
+</html>
