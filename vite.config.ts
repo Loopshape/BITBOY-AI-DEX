@@ -1,24 +1,23 @@
-import { defineConfig } from 'vite';
-import { createHtmlPlugin } from 'vite-plugin-html';
 import path from 'path';
+import { defineConfig, loadEnv } from 'vite';
 
-export default defineConfig({
-  root: path.resolve(__dirname, '.'), // project root
-  plugins: [
-    createHtmlPlugin({
-      minify: false, // optional: don’t minify HTML in dev
-    }),
-  ],
-  server: {
-    port: 8080,
-    strictPort: true,
-    hmr: {
-      overlay: true, // keep red error overlay; set false to disable
-    },
-  },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, 'src'), // adjust if you have a src folder
-    },
-  },
+
+export default defineConfig(({ mode }) => {
+    const env = loadEnv(mode, '.', '');
+    return {
+      server: {
+        port: 3000,
+        host: '0.0.0.0',
+      },
+      plugins: [],
+      define: {
+        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+      },
+      resolve: {
+        alias: {
+          '@': path.resolve(__dirname, '.'),
+        }
+      }
+    };
 });
