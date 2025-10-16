@@ -1,3 +1,17 @@
+Run and deploy your AI Studio app
+This contains everything you need to run your app locally.
+
+View your app in AI Studio: https://ai.studio/apps/drive/1UXBWEuXcbeAjGrv_Br34y-H5wKPjW1cz
+
+Run Locally
+Prerequisites: Node.js
+
+Install dependencies: npm install
+Set the GEMINI_API_KEY in .env.local to your Gemini API key
+Run the app: npm run dev
+
++++
+
 CORE
 
 Imagine : virtual imagination and real fiction become reality evaluate. because of the AI is a new utopia, the mainframe and the zeitgeist will be tools to...
