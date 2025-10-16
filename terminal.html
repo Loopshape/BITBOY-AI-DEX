@@ -1,1 +1,383 @@
-http://localhost:5173/
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Autonomous AI CLI GUI - Dark Console</title>
+    <!-- Load Tailwind CSS for styling and Fira Code font for terminal look -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for Dark Gradient Console */
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap');
+        
+        :root {
+            /* Monokai-Inspired RGBYW Palette for Typography */
+            --text-primary: #FFDD00;  /* Bright Orange-Yellow (#FD0) */
+            --color-yellow: #E6DB74;  /* Yellow/Warning (Used for syntax) */
+            --color-pink: #F92672;    /* Pink/Error (Used for syntax) */
+            --color-green: #A6E22E;   /* Green/Success (Used for syntax) */
+            --color-cyan: #66D9EF;    /* Cyan/Info (Used for syntax) */
+            --text-debug: #75715e;    /* Debug (Muted Gray/Comment) */
+
+            /* Background & Overlays */
+            /* Dark Wine Red (RGB for #3C061D) used for opacity layer */
+            --console-bg-rgb: 60, 6, 29; 
+            --button-wine-red: #900C3F; /* Custom Wine Red for button */
+            --body-gradient: linear-gradient(135deg, #1b0a1a 0%, #151b2a 100%);
+        }
+
+        /* Ensure HTML and Body use 100% of viewport height for reliable 'vh' units */
+        html {
+            height: 100%;
+        }
+
+        body {
+            font-family: 'Fira Code', monospace;
+            /* Outer background: Reddish-Blue Gradient (Fullscreen) */
+            background: var(--body-gradient);
+            margin: 0; 
+            padding: 0;
+            overflow: hidden; /* Prevent scrollbars */
+            height: 100%; /* Ensures 100% height from html */
+        }
+        
+        /* Container for the CLI: Set zoom to 1 (100% scale) */
+        #cli-container {
+            min-width: 100vw; 
+            width: 100vw; /* Explicitly set width */
+            height: 100vh; /* Set height to 100vh */
+            min-height: 100vh; /* Set min-height to 100vh */
+            
+            transform: scale(1.0); /* Zoom set to 1.0 */
+            transform-origin: top left;
+            /* Flex layout ensures internal panels resize responsively */
+        }
+
+        /* Console Output: Highly Transparent Wine Red (93% transparency / 0.07 opacity) */
+        .panel-gradient-overlay {
+            background: var(--body-gradient);
+            box-shadow: inset 0 0 0 1000px rgba(var(--console-bg-rgb), 0.07);
+        }
+
+        /* Header/Input: Dark Wine Red (5% transparency / 0.95 opacity) */
+        .panel-gradient-darker-overlay {
+            background: var(--body-gradient);
+            box-shadow: inset 0 0 0 1000px rgba(var(--console-bg-rgb), 0.95);
+        }
+
+        /* Console Output Area now uses a flex column for main and two split panels */
+        #console-split-area {
+            display: grid;
+            grid-template-columns: 1fr 4fr; /* UPDATED: 20% / 80% aggressive split */
+            flex-grow: 1; 
+            overflow: hidden; /* Hide scrollbars for the whole grid */
+        }
+
+        .split-panel {
+            flex-grow: 1; 
+            overflow-y: auto;
+            scroll-behavior: smooth;
+            color: var(--text-primary); 
+            padding: 1rem; /* Tailwind p-4 */
+        }
+
+        /* Add a vertical divider effect for the "shitty splitty" look */
+        #panel-left {
+            border-right: 2px solid rgba(var(--console-bg-rgb), 0.8);
+        }
+
+        /* Typography for elements not specifically syntax-highlighted */
+        .text-primary { color: var(--text-primary); }
+
+        /* Monokai RGBYW Typography with subtle glow (text-shadow) */
+        .log-success { 
+            color: var(--color-green); 
+            text-shadow: 0 0 2px rgba(166, 226, 46, 0.5); /* Green glow */
+            font-weight: 600;
+        }
+        .log-error { 
+            color: var(--color-pink); 
+            text-shadow: 0 0 2px rgba(249, 38, 114, 0.5); /* Pink glow */
+            font-weight: 600;
+        }
+        .log-info { 
+            color: var(--color-cyan); 
+            text-shadow: 0 0 2px rgba(102, 217, 239, 0.5); /* Cyan glow */
+            font-weight: 400;
+        }
+        .log-warning { 
+            color: var(--color-yellow); 
+            text-shadow: 0 0 2px rgba(230, 219, 116, 0.5); /* Yellow glow */
+            font-weight: 400;
+        }
+
+        /* Only debug/comments remain muted and without glow */
+        .log-debug { 
+            color: var(--text-debug); 
+            font-weight: 400;
+            text-shadow: none;
+        } 
+
+        /* Custom button styling (Wine Red) */
+        .btn-wine-red {
+            background-color: var(--button-wine-red);
+            color: var(--text-primary); 
+            transition: background-color 0.2s, box-shadow 0.2s;
+            box-shadow: 0 0 4px rgba(144, 12, 63, 0.7); /* Subtle shadow for depth */
+        }
+        .btn-wine-red:hover {
+            background-color: #B93766; 
+            box-shadow: 0 0 8px rgba(185, 55, 102, 0.9);
+        }
+
+        /* Smooth scrollbar for aesthetics */
+        .split-panel::-webkit-scrollbar { width: 8px; }
+        .split-panel::-webkit-scrollbar-thumb { background: #49483e; border-radius: 4px; }
+        .split-panel::-webkit-scrollbar-track { background: rgba(var(--console-bg-rgb), 0.9); }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <div id="cli-container" class="w-full flex flex-col shadow-2xl">
+        
+        <!-- Header: Darker gradient overlay (95% opacity). -->
+        <header class="panel-gradient-darker-overlay p-4 flex items-center justify-between">
+            <h1 class="text-xl font-bold text-primary">~/_/ai — Code Execution & Analysis</h1>
+            <span class="text-xs log-debug">Unrestricted Mode Active</span>
+        </header>
+
+        <!-- Split Console Output Area: Highly transparent Wine Red (93% transparent). -->
+        <div id="console-split-area" class="panel-gradient-overlay">
+            
+            <!-- Left Panel (20%): Designed for primary process output -->
+            <div id="panel-left" class="split-panel">
+                <div class="log-info">
+                    ℹ **Panel 1 (20%):** Process Logs.
+                </div>
+                <div class="log-success">
+                    ✓ System Health: OK
+                </div>
+                <hr class="border-debug my-2 opacity-30">
+                <!-- Initial output will go here -->
+                <div id="left-output">
+                    <div class="log-debug">
+                        🔍 Initializing...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel (80%): Designed for consensus, code, or secondary data -->
+            <div id="panel-right" class="split-panel">
+                <div class="log-info">
+                    ℹ **Panel 2 (80%):** Consensus Engine & Code Output.
+                </div>
+                <div id="right-output">
+                    <div class="log-warning">
+                        ⚠️ **New Feature:** Try `ai review "function add(a,b){return a+b}"`
+                    </div>
+                    <hr class="border-debug my-2 opacity-30">
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Command Input Form: Darker gradient overlay (95% opacity). -->
+        <form id="command-form" class="flex p-4 panel-gradient-darker-overlay">
+            <!-- Prompt label uses text-primary -->
+            <label for="command-input" class="text-primary mr-2 flex-shrink-0 pt-1">$&gt;</label>
+            <input type="text" id="command-input" placeholder='ai review "paste code here"' 
+                   class="flex-grow bg-transparent text-primary focus:outline-none placeholder-debug" 
+                   required autocomplete="off">
+            <!-- Button is Wine Red with primary text -->
+            <button type="submit" 
+                    class="ml-2 px-4 py-1 btn-wine-red font-bold text-sm transition-colors duration-200">
+                Run ✨
+            </button>
+        </form>
+
+    </div>
+
+    <script>
+        // --- GEMINI API Configuration ---
+        const API_KEY = ""; // Canvas environment provides this key
+        const MODEL_NAME = 'gemini-2.5-flash-preview-05-20';
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${API_KEY}`;
+        
+        const SYSTEM_PROMPT_REVIEW = "You are a highly opinionated, world-class Senior Software Architect. Your task is to perform a detailed code review, focusing on best practices, performance, and security. Provide your response as a concise, bulleted list of suggestions, followed by a refactored version of the code if necessary. Do not include any conversational filler. Only provide the technical response.";
+        
+        // Updated references to point to the new split panels
+        const leftOutputElement = document.getElementById('left-output');
+        const rightOutputElement = document.getElementById('right-output');
+        const inputElement = document.getElementById('command-input');
+        const formElement = document.getElementById('command-form');
+        
+        // COLORS object maps to the CSS classes we just defined for the Monokai look
+        const COLORS = {
+            SUCCESS: 'log-success',
+            ERROR: 'log-error',
+            INFO: 'log-info',
+            WARNING: 'log-warning',
+            DEBUG: 'log-debug',
+            DEFAULT: 'text-primary'
+        };
+
+        /**
+         * Appends a styled message to the console output.
+         * @param {string} text The message content.
+         * @param {string} type The style class (e.g., 'log-success').
+         * @param {HTMLElement} targetPanel The panel to log to (leftOutputElement or rightOutputElement).
+         */
+        function log(text, type = COLORS.DEFAULT, targetPanel = leftOutputElement) {
+            const line = document.createElement('div');
+            // Ensure the prompt text itself (which is 'log-success' in the CSS definition) gets the proper color.
+            const lineClass = (text.startsWith('$&> ') && type === COLORS.DEFAULT) ? COLORS.SUCCESS : type;
+
+            line.className = `whitespace-pre-wrap ${lineClass}`;
+            line.textContent = text;
+            targetPanel.appendChild(line);
+            // Scroll to the bottom to show the latest output
+            targetPanel.scrollTop = targetPanel.scrollHeight;
+        }
+
+        /**
+         * Runs the actual LLM call with exponential backoff.
+         * @param {string} reviewPrompt The user's code snippet for review.
+         */
+        async function runGeminiReview(reviewPrompt) {
+            const maxRetries = 3;
+            let attempt = 0;
+            const command = `ai review "${reviewPrompt.substring(0, 30)}..."`;
+
+            // 1. Initial Logging
+            log(`\n\n$&> ${command}`, COLORS.SUCCESS, leftOutputElement);
+            log(`\nℹ Connecting to Gemini API (${MODEL_NAME})...`, COLORS.INFO, leftOutputElement);
+            rightOutputElement.innerHTML = ''; // Clear for new output
+            
+            const loadingIndicator = document.createElement('div');
+            loadingIndicator.textContent = "█ ANALYZING & BUILDING CONSENSUS...";
+            loadingIndicator.className = `${COLORS.WARNING} ml-4`;
+            rightOutputElement.appendChild(loadingIndicator);
+            rightOutputElement.scrollTop = rightOutputElement.scrollHeight;
+            
+            while (attempt < maxRetries) {
+                try {
+                    const payload = {
+                        contents: [{ parts: [{ text: reviewPrompt }] }],
+                        systemInstruction: { parts: [{ text: SYSTEM_PROMPT_REVIEW }] },
+                    };
+
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 429 && attempt < maxRetries - 1) {
+                            // Rate limit, retry
+                            const delay = Math.pow(2, attempt) * 1000;
+                            log(`\n⚠️ Rate limit hit (429). Retrying in ${delay / 1000}s...`, COLORS.WARNING, leftOutputElement);
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                            attempt++;
+                            continue;
+                        }
+                        throw new Error(`API call failed with status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    
+                    loadingIndicator.remove(); // Remove loading indicator on success
+                    
+                    if (generatedText) {
+                        log('✓ Code review received successfully.', COLORS.SUCCESS, leftOutputElement);
+                        log('\n> LLM Code Review Output:', COLORS.DEFAULT, rightOutputElement);
+                        log(generatedText, COLORS.DEFAULT, rightOutputElement);
+                    } else {
+                        log('✗ AI did not return a valid response.', COLORS.ERROR, leftOutputElement);
+                    }
+                    return; // Success, exit function
+
+                } catch (error) {
+                    loadingIndicator.remove();
+                    log(`\n✗ Error during AI call: ${error.message}`, COLORS.ERROR, leftOutputElement);
+                    return; // Exit function on failure
+                }
+            }
+            
+            loadingIndicator.remove();
+            log('✗ Failed to get AI response after multiple retries.', COLORS.ERROR, leftOutputElement);
+        }
+
+        /**
+         * Simulates forwarding the prompt to the internal AI endpoint and fetching the response.
+         * @param {string} command The raw command string.
+         */
+        async function executeRemoteAI(command) {
+            
+            // Check for the new LLM-powered command
+            if (command.startsWith('ai review "') && command.endsWith('"')) {
+                const reviewPrompt = command.slice('ai review "'.length, -1).trim();
+                if (reviewPrompt) {
+                    await runGeminiReview(reviewPrompt);
+                    return;
+                }
+            }
+
+            // --- Fallback to Mock Scenarios (for non-review commands) ---
+            
+            // Define the local AI endpoint path
+            const ENDPOINT = '/home/loop/_/ai (MOCK)';
+            
+            // 1. Log the command being sent to the LEFT panel
+            log(`\n\n$&> ${command}`, COLORS.SUCCESS, leftOutputElement);
+            log(`\nℹ Simulating forwarding to internal endpoint: ${ENDPOINT} ...`, COLORS.INFO, leftOutputElement);
+            
+            // Clear right panel for new consensus output
+            rightOutputElement.innerHTML = '';
+            
+            // 2. Show loading state in the RIGHT panel
+            const loadingIndicator = document.createElement('div');
+            loadingIndicator.textContent = "█ ANALYZING & BUILDING CONSENSUS...";
+            loadingIndicator.className = `${COLORS.WARNING} ml-4`;
+            rightOutputElement.appendChild(loadingIndicator);
+            rightOutputElement.scrollTop = rightOutputElement.scrollHeight;
+
+            // Simulate network + processing time
+            await new Promise(resolve => setTimeout(resolve, 3000)); 
+
+            // 3. Remove loading indicator from RIGHT panel
+            loadingIndicator.remove();
+            
+            // --- Simulated AI Response Structure (Mock Fetch Result) ---
+            const cmdLower = command.toLowerCase();
+            let mockResponseLeft;
+            let mockResponseRight;
+
+            if (cmdLower.includes('error') || cmdLower.includes('bug')) {
+                // LEFT Panel: Traceback
+                mockResponseLeft = [
+                    { text: "FAILURE: Consensus 0.12 - Critical dependency error.", type: COLORS.ERROR },
+                    { text: "TRACEBACK (MOCK)", type: COLORS.DEBUG },
+                    { text: "   File '/usr/lib/ai/kernel.py', line 42, in run", type: COLORS.DEFAULT },
+                    { text: "AttributeError: 'NoneType' object has no attribute 'init'", type: COLORS.WARNING },
+                ];
+                // RIGHT Panel: Action required
+                mockResponseRight = [
+                    { text: "\n--- ACTION REQUIRED: Review Traceback ---", type: COLORS.ERROR },
+                    { text: "Engine suggests 'ai fix --issue-id 404'", type: COLORS.DEFAULT },
+                ];
+            } else if (cmdLower.includes('project') || cmdLower.includes('build')) {
+                 // LEFT Panel: File writes/Status
+                 mockResponseLeft = [
+                    { text: "PROJECT_NAME = 'autonomous-cli-app'", type: COLORS.WARNING },
+                    { text: "INFO: Initializing React scaffolding via 'ai --project'.", type: COLORS.INFO },
+                    { text: "✓ Files written: index.html, package.json", type: COLORS.SUCCESS },
+                    { text: "✓ Files written: src/App.jsx, src/main.jsx", type: COLORS.SUCCESS },
+                    { text: "\n--- BUILD PROCESS COMPLETE ---", type: COLORS.ERROR }
+                ];
+                // RIGHT Panel: Consensus/Code
+                mockResponseRight = [
+                    { text: "Consensus Score: 0.98 | Template Selected", type: COLORS.DEBUG },
+                    { text: "\n> Generated App.jsx Code Structure:", type: COLORS.DEFAULT },
+                    { text: "
