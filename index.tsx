@@ -628,7 +628,7 @@ function populateNewsFeed() {
 }
 
 // --- INITIALIZATION ---
-$(document).ready(() => {
+$(() => {
     // Initial UI setup
     updateAILog("Operator Synthesis Core V.42.1 Initialized.");
     $('#ai-status-text').text('IDLE');
